@@ -1,35 +1,45 @@
 #R code accompanying the paper "Coalescent Models Derived from a
 #Birth-Death Process" by Crespo and Wiuf
 
-# Author of R code: Fausto Crespo
+# Author of R code: Fausto Fabian Crespo Fernandez
 #####################################################
 rm(list=ls())
 ####################################################
 #####################################################################
-#relative
-#relative population size at time t given time origin(TOrigin) for scenario B
-#TOrigin: time of origin 
-#Delta: scaled growth rate (scaled by N/birth_rate )
-#t: time in mode time(scaled in units of N/birth_rate )
+#' relative
+#' relative population size at time t given time origin(TOrigin) for model M
+#' @param TOrigin: time of origin 
+#' @param Delta: scaled growth rate (scaled by N/birth_rate )
+#' @param t: time in mode time(scaled in units of N/birth_rate )
 #####################################################################
 relative <- function(Torigin,Delta,t)
   exp(-Delta*t)*(1-exp(-Delta*(Torigin-t)))^2/(1-exp(-Delta*Torigin))^2
 
-#####################################################################
-#reciprocRel
-#relative population size at time t given time origin(TOrigin) for scenario B(New version)
-#TOrigin: time of origin 
-#Delta: scaled growth rate (scaled by N/birth_rate )
-#t: time in mode time(scaled in units of N/birth_rate )
-#####################################################################
+#######################################################################################
+#' lambdaB
+#'
+#' The  relative population size for model M:
+#' @param u The time in model time M
+#' @param d The parameter Delta
+#' @param g The parameter Gamma
+#' @param t The time of origin
+#' @return the relative population size for mode M
+########################################################################################
 lambdaB <- function(u,d, g, t) {
   x <- exp(d*u)*(1-exp(-d*t))^2/( 1-exp(-d*(t-u)) )^2
   x <- (2.0*d/g) *x*(1 - exp(-g*( 1/(1-exp(-d*u))-1/(1-exp(-d*t)) )))
- # x <- exp(Delta*u)*(1-exp(-Delta*Torigin))^2/( 1-exp(-Delta*(Torigin-u)) )^2
-  #x <- (2 * Delta / Gamma)* x *(1 - exp(-Gamma*( 1.0/(1.0-exp(-Delta*u))-1.0/(1.0-exp(-Delta*Torigin)) )))
   return(x)
 }
-
+#######################################################################################
+#' LambdaB
+#'
+#' The cumulative relative population size for model M:
+#' @param s The time in model time M
+#' @param Delta The parameter Delta
+#' @param Gamma The parameter Gamma
+#' @param Torigin The time of origin
+#' @return the cummulative relative population size for mode M
+########################################################################################
 LambdaB<-function(s,Delta, Gamma, Torigin){
   if (s>0 & s<Torigin){
     upper.limit= min(s, Torigin)
@@ -38,78 +48,138 @@ LambdaB<-function(s,Delta, Gamma, Torigin){
   }
   else{
     if (s > Torigin)
-      print(paste("s=", s, " is greater than Torigin=", Torigin))
+      print(paste("Error!, s=", s, " is greater than Torigin=", Torigin))
     return(0)
   }
 }
+#######################################################################################
+#' functionToZeroB
+#'
+#' The auxiliar function to solve for the inverse of  cumulative relative population size for model M:
+#' Lambda(x, Delta, Gamma, TOrigin) -y = 0 or Lambda(x, Delta, Gamma, TOrigin) =y
+#' @param s The time in model time M
+#' @param Delta The parameter Delta
+#' @param Gamma The parameter Gamma
+#' @param Torigin The time of origin
+#' @return return the function to f(x)= Lambda(x, Delta, Gamma, TOrigin) -y 
+########################################################################################
 functionToZeroB<-function( y, Delta,Gamma, Torigin)
 {
   f<-function(x) LambdaB(x, Delta,Gamma, Torigin)- y
   return(f)
 }
-
+#######################################################################################
+#' InverseLambdaB
+#'
+#' Inverse of the cumulative relative population size Lambda^{-1}(x, Delta, Gamma, TOrigin)
+#' @param s The time in model time M
+#' @param Delta The parameter Delta
+#' @param Gamma The parameter Gamma
+#' @param Torigin The time of origin
+#' @return return the Lambda^{-1}(x, Delta, Gamma, TOrigin)
+########################################################################################
 InverseLambdaB<-function(s, Delta,Gamma, Torigin)
 {
-  #upper<-search_infinite_from(0, 0, functionToZeroB( s, Delta,Gamma, Torigin))
-  #result<-cmna::bisection(functionToZeroB( s, Delta, Gamma, Torigin), min(0,upper-1),upper, tol=10^(-6))
   result <- cmna::bisection(functionToZeroB( s, Delta, Gamma, Torigin), 0, Torigin, tol=10^(-6))
   return(result)
 }
-# Standard time to model time B
-standard2model <- function(Torigin,Delta,Gamma,u) 
+#######################################################################################
+#' standard2model
+#'
+#' Kignman coalescent  time to model time M
+#' @param Torigin The time of origin
+#' @param Delta The parameter Delta
+#' @param Gamma The parameter Gamma
+#' @param u The time variable u in model time
+#' @return return the model time in model M equivalent to Kingman coalescent time u
+########################################################################################
+standard2model <- function(Torigin,Delta,Gamma,u)
   ( log(1+Delta*u-exp(-Delta*Torigin)) - log(1+(Delta*u-1)*exp(-Delta*Torigin)) )/Delta
 
-# Standard time to model time B version M_K
+
+#######################################################################################
+#' standard2modelB_K
+#'
+#' Kignman coalescent  time to time in model  M_K
+#' @param u The time variable u in Kingman coalescent time
+#' @param Torigin The time of origin
+#' @param Delta The parameter Delta
+#' @param Gamma The parameter Gamma
+#' @param K The parameter K of the model M_K
+#' @return return the model time in model M_K equivalent to Kingman coalescent time u
+########################################################################################
 standard2modelB_K <- function(u,Torigin,Delta,Gamma, K) {
   minus.exp.Delta.Torigin = exp(-Delta*Torigin)
   a = (K / Gamma) * (1 - minus.exp.Delta.Torigin )- minus.exp.Delta.Torigin
-  #c= 1- (2.0/ Gamma)*(1 - minus.exp.Delta.Torigin)
   b= 1- (K/ Gamma)*(1 - minus.exp.Delta.Torigin)
-  #d= a*(1-minus.exp.Delta.Torigin)*(1-minus.exp.Delta.Torigin)
-  #K= exp(Gamma* u * (a*b+c) / (2.0 * d) + log((b+c)/(a-1)))
-  #x=(K*a-c) /(K+b)
-  #x=(exp(u*K/2.0)- b ) /( exp(u*K /2.0 -Delta*Torigin) + a)#version of December 31, 2020
-  #result=(1.0/Delta)*log(x)#version of December 31, 2020
   x=exp(u*K/2.0)
   y=(x- b ) /( x*exp(-Delta*Torigin) + a)
   result=(1.0/Delta)*log(y)
   return(result)
 }
-# Standard time to model B version time M*
+#######################################################################################
+#' standard2modelB
+#'
+#' Kignman coalescent  time to time in model  M_K
+#' @param u The time variable u in Kingman coalescent time
+#' @param Torigin The time of origin
+#' @param Delta The parameter Delta
+#' @param Gamma The parameter Gamma
+#' @param K The parameter K of the model M*
+#' @return return the model time in model M* equivalent to Kingman coalescent time u
+########################################################################################
 standard2modelB <- function(u,Torigin,Delta,Gamma, K) {
   minus.exp.Delta.Torigin = exp(-Delta*Torigin)
   a = (K / Gamma) * (1 - minus.exp.Delta.Torigin )- minus.exp.Delta.Torigin
-  #c= 1- (2.0/ Gamma)*(1 - minus.exp.Delta.Torigin)
   b= 1- (K/ Gamma)*(1 - minus.exp.Delta.Torigin)
-  #d= a*(1-minus.exp.Delta.Torigin)*(1-minus.exp.Delta.Torigin)
-  #K= exp(Gamma* u * (a*b+c) / (2.0 * d) + log((b+c)/(a-1)))
-  #x=(K*a-c) /(K+b)
   x=(exp(u*K/2.0)- b ) /( exp(u*K /2.0 -Delta*Torigin) + a)
   result=(1.0/Delta)*log(x)
   return(result)
 }
+#######################################################################################
+#' standard2modelB_MAster
+#'
+#' Kignman coalescent  time to time in model  M*
+#' @param u The time variable u in Kingman coalescent time
+#' @param Torigin The time of origin
+#' @param Delta The parameter Delta
+#' @param Gamma The parameter Gamma
+#' @return return the model time in model M* equivalent to Kingman coalescent time  u
+########################################################################################
 standard2modelB_MAster <- function(u, Torigin,Delta,Gamma) {
   
   result=InverseLambdaB(u, Delta, Gamma, Torigin)
   return(result)
 }
-
-# Standard time to model time B version 2
-standard2modelBOld <- function(Torigin,Delta,Gamma, u) {
-  a = exp(-1* Delta*Torigin)
-  b = Gamma *u/ (2*(1-a))
-  x=(b+1)/(a*b+1)
-  result=(1.0/Delta)*log(x)
-  return(result)
-}
-
-# Coalescence times with constant population size
+#######################################################################################
+#' standardCoal
+#'
+#' Kignman coalescent inter event times for sample size n
+#' @param n The sample size at time 0(present time)
+#' @return return the list of coalescent times inter event times
+########################################################################################
 standardCoal <- function(n) unlist(lapply(2:n,function(i) rexp(1,rate=choose(i,2))))
-
-# Coalescence times with constant population size from some sample size p to n
+#######################################################################################
+#' standardCoalFrom
+#'
+#' Kignman coalescent inter event times for sample size n to sample size p(p<n)
+#' @param p The sample size at some time earlier than present time(p<n)
+#' @param n The sample size at time 0(present time)
+#' @return return the list of coalescent times inter event times
+########################################################################################
 standardCoalFrom <- function(p,n) unlist(lapply(p:n,function(i) rexp(1,rate=choose(i,2))))
 
-# Coalescence times in model time(inter event times)
+#######################################################################################
+#' modelCoal
+#'
+#' Coalescent  times from sample size n to sample size 1
+#' @param n The sample size at time 0(present time)
+#' @param Torigin The time of origin
+#' @param Delta The parameter Delta
+#' @param Gamma The parameter Gamma
+#' @param K The parameter K of the model M_K
+#' @return return the list of coalescent times in model M_K
+########################################################################################
 modelCoal <- function(n,Torigin,Delta, Gamma) {
   w <- standardCoal(n)
   # time until i=n-1,...,1 ancestors
@@ -117,7 +187,17 @@ modelCoal <- function(n,Torigin,Delta, Gamma) {
   u <- c(u,0)
   unlist(lapply(1:(n-1),function(i) u[i]-u[i+1]))
 }
-# Coalescence event  times in model time
+#######################################################################################
+#' modelCoalB_K
+#'
+#' Coalescent  times from sample size n to sample size 1
+#' @param n The sample size at time 0(present time)
+#' @param Torigin The time of origin
+#' @param Delta The parameter Delta
+#' @param Gamma The parameter Gamma
+#' @param K The parameter K of the model M_K
+#' @return return the list of coalescent times in model M_K
+########################################################################################
 modelCoalB_K <- function(n,Torigin,Delta, Gamma, K) {
   w <- standardCoal(n)
   # time until i=n-1,...,1 ancestors
@@ -125,7 +205,16 @@ modelCoalB_K <- function(n,Torigin,Delta, Gamma, K) {
   u <- unlist(lapply( cumulativeSTDCoaltimes, FUN=function(x) standard2modelB_K(x,Torigin,Delta,Gamma,K)))
   return(u)
 }
-# Coalescence event  times in model time
+#######################################################################################
+#' modelCoalB_MAster
+#'
+#' Coalescent  times from sample size n to sample size 1
+#' @param n The sample size at time 0(present time)
+#' @param Torigin The time of origin
+#' @param Delta The parameter Delta
+#' @param Gamma The parameter Gamma
+#' @return return the list of coalescent times in model M*
+########################################################################################
 modelCoalB_MAster <- function(n,Torigin,Delta, Gamma) {
   w <- standardCoal(n)
   # time until i=n-1,...,1 ancestors
@@ -133,13 +222,30 @@ modelCoalB_MAster <- function(n,Torigin,Delta, Gamma) {
   u <- unlist(lapply( cumulativeSTDCoaltimes, FUN=function(x) standard2modelB_MAster(x,Torigin,Delta,Gamma)))
   return(u)
 }
-# Coalescence event  times in model time
+#######################################################################################
+#' modelCoalB_MAster
+#'
+#' Coalescent  times from sample size n to sample size nB
+#' @param n The sample size at time 0(present time)
+#' @param Torigin The time of origin
+#' @param Delta The parameter Delta
+#' @param Gamma The parameter Gamma
+#' @param nB The sample size when the Hybrid model switchs from M_K to BD coalescent
+#' @return return the list of coalescent times in model Hybrid
+########################################################################################
 modelCoalHybrid <- function(n,Torigin,Delta, Gamma, nB) {
   w <- standardCoalFrom(nB+1,n)
   u <-  unlist( lapply(1:(n-nB),function(i) sum(w[i:(n-nB)])) ) 
   return(u)
 }
-# Coalescence times with exponentially decreasing population size
+#######################################################################################
+#' expCoal
+#'
+#' Coalescent  times from sample size n to sample size 1
+#' @param n The sample size at time 0(present time)
+#' @param beta The exponent parameter in N(t)=N(0) exp(-beta*t) (time backwards)
+#' @return return the list of coalescent times when the population is growing exponentially
+########################################################################################
 expCoal <- function(n,beta) {
   w <- standardCoal(n)
   # time until i=n-1,...,1 ancestors
@@ -148,13 +254,16 @@ expCoal <- function(n,beta) {
   u <- c(u,0)
   unlist(lapply(1:(n-1),function(i) u[i]-u[i+1]))
 }
-
-#######################################################################
-compute.gamma=function(lambda, mu, rho)
-{
-  output= abs(lambda-mu)/max(rho*lambda, mu-(1-rho)*lambda)
-  return(output)
-}
+#######################################################################################
+#' log.prod.between
+#'
+#' The logarithm of the product of the positive  numbers between from and to(including them)
+#' i.e log(k*(k+1)*...*n) where k is the from parameter and n is the to parameter
+#' i.e the sum of the logarithm of the factors in the product
+#' @param from The first number in the product(if it is less than or equal to 0 then the initial number is taken as 1)
+#' @param to The last number of the product
+#' @return return the sum of the logarithm of the numbers(including the from and to)
+########################################################################################
 log.prod.between=function(from,to){
   result=0
   stopifnot(from>=0)
@@ -173,6 +282,15 @@ log.prod.between=function(from,to){
  else 
    return(result)
 }
+#######################################################################################
+#' log.prod.from.To
+#'
+#' The logarithm of  (n!/k!) where k is the from parameter and n is the to parameter
+#' i.e the sum of the logarithm of the factors from k+1 to n
+#' @param from The first number in the product(if it is less than or equal to 0 then the initial number is taken as 1)
+#' @param to The last number of the product
+#' @return return the sum of the logarithm of the numbers(including  the last one but not the first one)
+########################################################################################
 log.prod.from.To=function(from,to){
   result=0
   stopifnot(from>=0)
@@ -197,26 +315,16 @@ log.prod.from.To=function(from,to){
   else 
     return(result)
 }
-ToStandardTime<-function(t, Time1, Delta )
-{
-  a=exp(-1*Delta*Time1)
-  c=exp(Delta*t)
-  result<-(c-1)*(1-a)/(1-a*c)
-  return(result)
-}
-ToModelTime<-function(u, Time1, Delta )
-{
-  a=exp(-1*Delta*Time1)
-  b=1+u-a
-  c=1+(u-1)*a
-  if ((b== 0) || (c==0))
-  {
-    return((1.0/Delta)*(log(1+u)-(u*u*a)/(1+u)))
-  } 
-  else{
-    return((1.0/Delta)*log(b)-log(c))
-  }
-}
+#######################################################################################
+#' sample.conditional.coalescent.time.distribution
+#'
+#' Sample the coalescent time from the Beta distribution
+#' @param Delta The parameter Delta
+#' @param alpha The last number of the product
+#' @param k The current sample size
+#' @param m The current population size
+#' @return return the coalescent time when 
+########################################################################################
 sample.conditional.coalescent.time.distribution = function(Delta, alpha, k, m){
   require(stats)
   stopifnot(k>0)
@@ -226,13 +334,32 @@ sample.conditional.coalescent.time.distribution = function(Delta, alpha, k, m){
   T=(-1.0/Delta)* log(U/(alpha+(1-alpha)*U))
   return(T)
 }
+#######################################################################################
+#' sample.first.coalescent.time.distribution
+#'
+#' Sample the coalescent time from the Gamma distribution
+#' @param Delta The parameter Delta
+#' @param Gamma The last number of the product
+#' @param k The current sample size
+#' @return return the coalescent time 
+########################################################################################
 sample.first.coalescent.time.distribution = function(Delta, Gamma, k){
   require(stats)
   U= stats::rgamma(1, shape=k, rate=1)
   T=(-1.0 / Delta) * log(1.0 - (Gamma/(U+Gamma)))
   return(T)
 }
-
+#######################################################################################
+#' conditional.density.first.time.k.ancestors
+#'
+#' Kignman coalescent  time to time in model  M_K
+#' @param delta The time variable u in Kingman coalescent time
+#' @param gamma The time of origin
+#' @param n The parameter Delta
+#' @param time.Origin The parameter Gamma
+#' @param times The parameter K of the model M_K
+#' @return return the model time in model M_K equivalent to Kingman coalescent time u
+########################################################################################
 conditional.density.first.time.k.ancestors = function(delta, gamma, n, time.Origin, times){
   exp.delta.t = exp(-1*delta* time.Origin)
   output = ((delta* gamma)**(n-1)) * (1+ (gamma-1)*exp.delta.t)**(n-1) / (1- exp.delta.t)**(n-1)
@@ -292,15 +419,14 @@ solve.cumulative.density.number.ancestors.population=function(u, k,m)
   
   return(result)
 }
-#####################################################################
-#get_number_of_ancestors_population_when_sample_size_minus_1_sample
-#sample the  number of ancestors in the coalescent approximation 
-# when there are sample_size-1 ancestors in the coalescent appproximation 
-# in the sample. The number ancestors in the population is assumed to be infinity
-#sample_size: current number ancestors in the sample(present time) 
-#output: the number of ancestors when there are k-1 ancestors in the sample
-# the output >=sample_size-1 
-#####################################################################
+#######################################################################################
+#' get_number_of_ancestors_population_when_sample_size_minus_1_sample
+#' sample the  number of ancestors in the coalescent approximation 
+#' when there are sample_size-1 ancestors in the coalescent appproximation 
+#' in the sample. The number ancestors in the population is assumed to be infinity
+#' @param sample_size: current number ancestors in the sample(present time) 
+#' @return: the number of ancestors when there are k-1 ancestors in the sample  the output >=sample_size-1 
+#######################################################################################
 get_number_of_ancestors_population_when_sample_size_minus_1_sample=function(sample_size)
 {
   
@@ -315,16 +441,15 @@ get_number_of_ancestors_population_when_sample_size_minus_1_sample=function(samp
   }
   return(mprime)
 }
-#####################################################################
-#get_number_of_ancestors_population_when_k_minus_1_ancestors_sample
-#sample the number of ancestors in the coalescent approximation 
-# when there are k-1 ancestors in the coalescent appproximation 
-# in the sample
-#k: current number ancestors in the sample 
-#m: current number ancestors in the population
-#output: the number of ancestors when there are k-1 ancestors in the sample
-# the output >=k-1 and < m 
-#####################################################################
+#######################################################################################
+#' get_number_of_ancestors_population_when_k_minus_1_ancestors_sample
+#' sample the number of ancestors in the BD coalescent approximation 
+#' when there are k-1 ancestors in the coalescent appproximation 
+#' in the sample
+#' @param k: current number ancestors in the sample 
+#' @param m: current number ancestors in the population
+#' @return: the number of ancestors when there are k-1 ancestors in the sample the output >=k-1 and < m 
+#######################################################################################
 get_number_of_ancestors_population_when_k_minus_1_ancestors_sample=function(k,m)
 {
   accepted=FALSE
@@ -340,6 +465,13 @@ get_number_of_ancestors_population_when_k_minus_1_ancestors_sample=function(k,m)
   }
   return(mprime)
 }
+#######################################################################################
+#' simulate.list.number.ancestors.population
+#' simulate the number of ancestors in the BD coalescent approximation when there are  n-1, n-2,...,1 in the sample
+#' where n is the sample size
+#' @param sample.size: the sample size  
+#' @return: the list of population sizes 
+#######################################################################################
 simulate.list.number.ancestors.population=function(sample.size){
 
   population.present.time= get_number_of_ancestors_population_when_sample_size_minus_1_sample(sample.size)
@@ -357,6 +489,14 @@ simulate.list.number.ancestors.population=function(sample.size){
 
   return(unlist(list.populations.sizes))
 }
+#######################################################################################
+#' simulate.list.number.ancestors.population.from
+#' simulate the number of ancestors in the BD coalescent approximation when there are  current.sample, current.sample-1,...,1 in the sample
+#' @param sample.size: the sample size at t=0  
+#' @param current.population.size: the sample size  
+#' @param current.sample: the current sample size  
+#' @return: the list of population sizes 
+#######################################################################################
 simulate.list.number.ancestors.population.from=function(sample.size, current.population.size, current.sample){
 
   stopifnot(current.sample <=sample.size)
@@ -383,7 +523,15 @@ simulate.list.number.ancestors.population.from=function(sample.size, current.pop
   
   return(unlist(list.populations.sizes))
 }
-
+#######################################################################################
+#' simulate.coalescent.times.A
+#' simulate the coalescent times of the sample from sample.size to 1  using BD coalescent approximation
+#' @param Gamma: Gamma parameter 
+#' @param Delta: Delta parameter  
+#' @param sample.size: the  sample size  at the t=0
+#' @param list.number.ancestors.population: the  list of number ancestor population when there are n, n-1,..,1  in the sample
+#' @return: the list of coalescent times 
+#######################################################################################
 simulate.coalescent.times.A=function(Gamma, Delta, sample.size, list.number.ancestors.population)
 {
   list.coal.times=list()
@@ -406,6 +554,17 @@ simulate.coalescent.times.A=function(Gamma, Delta, sample.size, list.number.ance
   }
   return(unlist(list.coal.times))
 }
+#######################################################################################
+#' simulate.coalescent.times.A.from
+#' simulate the coalescent times of the sample from current.sample to 1 using BD coalescent approximation
+#' @param Gamma: Gamma parameter 
+#' @param Delta: Delta parameter  
+#' @param sample.size: the  sample size at t=0 
+#' @param list.number.ancestors.population: the  list of number ancestor population when there are current.sample, current.sample-1,..,1  in the sample
+#' @param current.sample: the  current sample(less than sample.size)
+#' @param from_time: the  current time 
+#' @return: the list of coalescent times 
+#######################################################################################
 simulate.coalescent.times.A.from=function(Gamma, Delta, sample.size, list.number.ancestors.population, current.sample, from_time)
 {
   stopifnot(current.sample<=sample.size)
@@ -439,6 +598,15 @@ simulate.coalescent.times.A.from=function(Gamma, Delta, sample.size, list.number
   }
   return(unlist(list.coal.times))
 }
+######################################################################################
+#' simulate.coalescent.times.A.test
+#' compute the theoretical expected coalescent times usint the simulated numbers of ancestors 
+#' @param Gamma: Gamma parameter 
+#' @param Delta: Delta parameter  
+#' @param sample.size: the  sample size at t=0 
+#' @param list.number.ancestors.population: the  list of number ancestor population when there are current.sample, current.sample-1,..,1  in the sample
+#' @return: the list of coalescent times 
+#######################################################################################
 simulate.coalescent.times.A.test=function(Gamma, Delta, sample.size, list.number.ancestors.population)
 {
   p=1
@@ -451,6 +619,12 @@ simulate.coalescent.times.A.test=function(Gamma, Delta, sample.size, list.number
 
   return(unlist(list.coal.times))
 }
+######################################################################################
+#' expected_number_ancestors
+#' compute the theoretical expected  numbers of ancestors 
+#' @param sample.size: the  sample size at t=0 
+#' @return: the list of theoretical number of ancestors
+#######################################################################################
 expected_number_ancestors =function(sample.size){
   
   list.number.ancestors<-lapply((sample.size-2):1, FUN=function(k, sample.size)
@@ -461,6 +635,15 @@ expected_number_ancestors =function(sample.size){
   
   return(unlist(list.number.ancestors))
 }
+######################################################################################
+#' compute_stats_number_ancestors
+#' compute stats for the numbers of ancestors 
+#' @param sample.size: the  sample size at t=0 
+#' @param sim: the  number of simulations used
+#' @param DeltaList: the  list of Delta values used to simulate number.ancestors.simA
+#' @param number.ancestors.simA: the  list of simulated number of ancestors 
+#' @return: the list of data frames with statistics 
+#######################################################################################
 compute_stats_number_ancestors=function(sample.size,sim,DeltaList, number.ancestors.simA){
   
   list.Data.Frames.Numbers.Ancestors<-parallel::mclapply(1:length(DeltaList),mc.cores=parallel::detectCores()-1, FUN=function(k, sample.size,sim, number.ancestors.simA ){
@@ -468,7 +651,7 @@ compute_stats_number_ancestors=function(sample.size,sim,DeltaList, number.ancest
     quants <- c(0.025,0.50,0.975)
     
     matrixCurrentValue<-matrix(number.ancestors.simA[k,], nrow=sim , ncol=sample.size-1, byrow=TRUE)
-    #quantiles<-apply( matrixCurrentValue , 2 , quantile , probs = quants , na.rm = TRUE )
+
     quantiles<-apply( matrixCurrentValue , 2 , quantile , probs = quants  )
     mean.Number.Ancestors<-colMeans(matrixCurrentValue)
     result <-data.frame(mean=mean.Number.Ancestors, LI= quantiles[1,], median=quantiles[2,], UI=quantiles[3,])
@@ -520,9 +703,7 @@ simulateB_K.parallel=function(DeltaList,GammaList, sim, sample.size, Time.Origin
   innerCluster <- parallel::makeCluster(ncores, type="FORK", outfile="")
    on.exit(parallel::stopCluster(innerCluster), add = TRUE)
   doParallel::registerDoParallel(innerCluster)
-  
-  #rng<- RNGseq( length(DeltaList)* sim, 5363131)
-  #rng<- RNGseq( length(DeltaList)* sim, 32252)
+
   
   rng<- RNGseq( length(DeltaList)* sim, 53727)
   opts <- list(chunkSize=2)
@@ -535,19 +716,12 @@ simulateB_K.parallel=function(DeltaList,GammaList, sim, sample.size, Time.Origin
     TimeOrigin=Time.Origin.STD[i,j]
    
     coal.events.times= modelCoalB_K(sample.size,TimeOrigin,DeltaList[i], GammaList[i], K)
-  
-    #print(paste("time origin=",TimeOrigin,"coal event times=", coal.events.times ))
-    #print(unlist(coal.events.times))
     
     print(paste("finished B M_k in parallel for Delta", DeltaList[i], "Gamma", GammaList[i], "K",K, " sim ",j, sep=" "))
     positions <-cbind(rep(i, (sample.size-1)),((j-1)*(sample.size-1) +1):(j*(sample.size-1)))
-    #print(positions)
     coal.events.times.simB[positions] <- rev(coal.events.times)
     NULL
   }
-
-   
- 
   list.Data.FramesB<-parallel::mclapply(1:length(DeltaList),mc.set.seed = TRUE,mc.cores=parallel::detectCores()-1, 
     FUN=function(k, sample.size,sim, coal.events.times.simB )
     {
@@ -584,9 +758,7 @@ simulateB_MAster.parallel=function(DeltaList,GammaList, sim, sample.size, Time.O
   innerCluster <- parallel::makeCluster(ncores, type="FORK", outfile="")
   on.exit(parallel::stopCluster(innerCluster), add = TRUE)
   doParallel::registerDoParallel(innerCluster)
-  
-  #rng<- RNGseq( length(DeltaList)* sim, 5363131)
-  #rng<- RNGseq( length(DeltaList)* sim, 32252)
+
   
   rng<- RNGseq( length(DeltaList)* sim, 53727)
   opts <- list(chunkSize=2)
@@ -599,9 +771,7 @@ simulateB_MAster.parallel=function(DeltaList,GammaList, sim, sample.size, Time.O
       TimeOrigin=Time.Origin.STD[i,j]
       
       coal.events.times= modelCoalB_MAster(sample.size,TimeOrigin,DeltaList[i], GammaList[i])
-      
-      #print(paste("time origin=",TimeOrigin,"coal event times=", coal.events.times ))
-      #print(unlist(coal.events.times))
+
       
       print(paste("finished B M Aster in parallel for Delta", DeltaList[i], "Gamma", GammaList[i],  " sim ",j, sep=" "))
       positions <-cbind(rep(i, (sample.size-1)),((j-1)*(sample.size-1) +1):(j*(sample.size-1)))
@@ -618,7 +788,6 @@ simulateB_MAster.parallel=function(DeltaList,GammaList, sim, sample.size, Time.O
                                           
                                           quants <- c(0.025,0.50,0.975)
                                           matrixCurrentValue<-matrix(coal.events.times.simB[k,], nrow=sim , ncol=sample.size-1, byrow=TRUE)
-                                          #quantiles<-apply( matrixCurrentValue , 2 , quantile , probs = quants , na.rm = TRUE )
                                           quantiles<-apply( matrixCurrentValue , 2 , quantile , probs = quants )
                                           meanCoalTimes<-colMeans(matrixCurrentValue)
                                           result <-data.frame(mean=meanCoalTimes, LI= quantiles[1,], median=quantiles[2,], UI=quantiles[3,])
@@ -857,16 +1026,12 @@ simulateHybrid.parallel=function(DeltaList,GammaList, sim, sample.size, Time.Ori
 
         std.coal.events.times.until.B= rev(modelCoalHybrid(sample.size,TimeOrigin,DeltaList[i], GammaList[i], nB))
         
-        #coal.events.times.until.nB=standard2modelB_K( unlist(std.coal.events.times.until.B), TimeOrigin,DeltaList[i],GammaList[i],K)
-
          coal.events.times.until.nB= unlist(lapply( std.coal.events.times.until.B, FUN=function(x) standard2modelB_K(x,TimeOrigin,DeltaList[i],GammaList[i],K)))
 
         t= std.coal.events.times.until.B[length(std.coal.events.times.until.B)]
         
         m= ceiling(2.0 / t)
         
-        
-       # m = sample.size*nB/(sample.size-nB-1)
         
       }
         number.ancestors.Transition[cbind(i, j)] <- m
@@ -888,7 +1053,6 @@ simulateHybrid.parallel=function(DeltaList,GammaList, sim, sample.size, Time.Ori
       
       number.ancestors.simHybrid[positions] <- c(rep(0, sample.size-nB-2), unlist(list.number.ancestors.population), 0)
       
-      #list.number.ancestors.population[2:(length(coal.events.times))]
       
       print(paste("finished hybrid scenario in parallel for Delta", DeltaList[i], "Gamma", GammaList[i], " sim ",j, sep=" "))
       NULL
@@ -933,7 +1097,6 @@ simulateA.test=function(Delta,Gamma, sim, sample.size, Time.Origin.STD,i, coal.e
   
 
   quants <- c(0.025,0.50,0.975)
-  #quantiles<-apply( coal.events.times.simA , 2 , quantile , probs = quants , na.rm = TRUE )
   quantiles<-apply( coal.events.times.simA , 2 , quantile , probs = quants )
   meanCoalTimes<-colSums(coal.events.times.simA)/sim
   result <-data.frame(mean=meanCoalTimes, LI= quantiles[1,], median=quantiles[2,], UI=quantiles[3,])
@@ -987,7 +1150,6 @@ simulateA.test.parallel=function(DeltaList,GammaList, sim, sample.size, Time.Ori
     
     quants <- c(0.025,0.50,0.975)
     matrixCurrentValue<-matrix(coal.events.times.sim.testA[k,], nrow=sim , ncol=sample.size-1, byrow=TRUE)
-    #quantiles<-apply( matrixCurrentValue , 2 , quantile , probs = quants , na.rm = TRUE )
     quantiles<-apply( matrixCurrentValue , 2 , quantile , probs = quants  )
     meanCoalTimes<-colMeans(matrixCurrentValue)
     result <-data.frame(mean=meanCoalTimes, LI= quantiles[1,], median=quantiles[2,], UI=quantiles[3,])
@@ -1116,10 +1278,13 @@ derivativeTransformedLambda<-function(Delta, Gamma)
   return(f)
 }
 #####################################################################
-# InverseTransformedLambda
-#Computes Lambda^(-1)(s) for scenario scenario C by transforming the
-#variables Lambda^(-1)(exp(s)) to allow the argument of Lambda^(-1)
-#to be non negative
+#' InverseTransformedLambda
+#' Computes Lambda^(-1)(s) for scenario scenario C by transforming the
+#' variables Lambda^(-1)(exp(s)) to allow the argument of Lambda^(-1)
+#' to be non negative
+#' @param s 
+#' @param Delta Delta parameter 
+#' @param Gamma Gamma parameter
 #####################################################################
 InverseTransformedLambda<-function(s, Delta,Gamma)
 {
@@ -1140,53 +1305,12 @@ modelCoalC <- function(sample.size, Delta, Gamma) {
   return(u)
 }
 #####################################################################
-#sampleTOriginFormEVD8
-#sample random time of origin for cancer model scenario B from Extreme Value Distribution(EVD)
-#in particular Gumbel distribution
-#####################################################################
-sampleTOriginFormEVD8<-function(n, Delta, Gamma )
-{
-  require(evd)
-  results<-list()
-  sampled.gumbel <- evd::rgumbel(n, 0,1)
-  lapply(1:n, FUN=function(i, Delta, Gamma, results){
-    x=sampled.gumbel[i]
-    y <- (1.0 / Delta) * log(1 + Gamma*exp(x) )
-    results[[i]]<<-y
-  }, Delta=Delta, Gamma=Gamma, results)
-  return(unlist(results))
-}
-#####################################################################
-#doParallel
-#performs fun in parallel with progress bar 
-#####################################################################
-doParallel <- function(pop, fun, ncores = parallel::detectCores(),...) {
-  require("doFuture")
-  require(doSNOW)
-  require(tcltk)
-  registerDoFuture()
-  ntasks <- 100
-  pb <- tkProgressBar(max=ntasks)
-  progress <- function(n) setTkProgressBar(pb, n)
-  progress <- function(n) cat(sprintf("current Delta, Gamma %d is complete\n", n))
-  opts <- list(progress=progress)
-  cl <- parallel::makeCluster(ncores, outfile="")
-  registerDoSNOW(cl)
-  old_plan <- plan(cluster, workers = cl)
-  on.exit({
-    plan(old_plan)
-    parallel::stopCluster(cl)
-  })
-  foreach(i = pop,
-          .multicombine=TRUE) %dopar% fun(i,...)
-}
-#####################################################################
-#nearest_value_search
-#finds the first element p in the increasing ordered list increasing_list such that
-# monotone_fun(p)>x 
-#x value to compare the monotone_fun(tipically 0) 
-#increasing_list: increasing ordered list
-#monotone_function: monotone function(increasing or decreasing)
+#' nearest_value_search
+#' finds the first element p in the increasing ordered list increasing_list such that
+#' monotone_fun(p)>x 
+#' @param x value to compare the monotone_fun(tipically 0) 
+#' @param increasing_list: increasing ordered list
+#' @param monotone_function: monotone function(increasing or decreasing)
 #####################################################################
 nearest_value_search = function(x, increasing_list, monotone_function){
   left = 1
@@ -1214,12 +1338,13 @@ simulateB_all<-function(sample.size, sim, DeltaList, GammaList, Time.Origin.STD)
   return(listDataFramesB)
 }
 #####################################################################
-#search_infinite_from
-#finds the first interval [2^{p-1}*start, 2^{p}*start] with p=1,2,.., in [start, infinyty] 
-# such that monotone_fun(2^{p}*start)>x and  monotone_fun(2^{p-1}*start)<=x
-#x value to compare the monotone_fun(tipically 0) 
-#start: start of the interval to search
-#monotone_function: monotone function(increasing or decreasing)
+#' search_infinite_from
+#' finds the first interval [2^{p-1}*start, 2^{p}*start] with p=1,2,.., in [start, infinyty] 
+#' such that monotone_fun(2^{p}*start)>x and  monotone_fun(2^{p-1}*start)<=x
+#' @param x value to compare the monotone_fun(tipically 0) 
+#' @param start: start of the interval to search
+#' @param monotone_function: monotone function(increasing or decreasing)
+#' @output  the first positive integer 2^{p}*start such that monotone_fun(2^{p}*start)>x
 #####################################################################
 search_infinite_from<-function( x, start,  monotone_function ){ 
     if (start >0){
@@ -1241,11 +1366,13 @@ search_infinite_from<-function( x, start,  monotone_function ){
    return(result)
 }
 #####################################################################
-#get_simulated_kth_coal_times
-#gets the simulated  kth coalescence times
-#coal.events.times.simA is a big matrix bigstatsr::FBM(length(DeltaList),sim*(sample.size-1))
-#k index of coalescence time  from present time backwards
-#sim: number of simulations
+#' get_simulated_kth_coal_times
+#' gets the simulated  kth coalescence times
+#' @param coal.events.times.sim is a big matrix bigstatsr::FBM(length(DeltaList),sim*(sample.size-1))
+#' @param k index of coalescence time  from present time backwards
+#' @param sim: number of simulations
+#' @param sample.size: sample size
+#' @output kth_coal_times: kth coalescent times
 #####################################################################
 get_simulated_kth_coal_times<-function(coal.events.times.sim, pos, sim, sample.size)
 {
@@ -1264,12 +1391,13 @@ get_simulated_kth_coal_times<-function(coal.events.times.sim, pos, sim, sample.s
   return(kth_coal_times)
 }
 #####################################################################
-#get_list_simulated_trees
-#gets a simulate tree with some  set of paramater value
-#coal.events.times.sim is a big matrix bigstatsr::FBM(length(DeltaList),sim*(sample.size-1))
-#parameter_index index of parameter value
-#number.sim.trees: number of simulations
-#sample.size: the sample size used
+#' get_list_simulated_trees
+#' gets a simulate tree with some  set of paramater value
+#' @param coal.events.times.sim is a big matrix bigstatsr::FBM(length(DeltaList),sim*(sample.size-1))
+#' @param parameter_index index of parameter value
+#' @param number.sim.trees: number of simulations
+#' @param sample.size: the sample size used
+#' @output list_trees: the list of simulated trees
 #####################################################################
 get_list_simulated_trees<-function(coal.events.times.sim, parameter_index, number.sim.trees, sample.size)
 {
@@ -1305,6 +1433,12 @@ get_list_simulated_trees<-function(coal.events.times.sim, parameter_index, numbe
 
   return(list_trees)
 }
+#####################################################################
+#' install_required_packages
+#' install required packages
+#' @param list.of.packages list of packages to install
+#' @output None
+#####################################################################
 install_required_packages=function(list.of.packages){
   
   new.packages <- list.of.packages[!(list.of.packages %in% installed.packages()[,"Package"])]
@@ -1317,6 +1451,12 @@ install_required_packages=function(list.of.packages){
      BiocManager::install("ggtree")
   
 }
+#####################################################################
+#' load_required_packages
+#' load required packages
+#' @param list_packages list of packages to load
+#' @output None
+#####################################################################
 load_required_packages=function(list_packages){
 
   lapply(list_packages,
@@ -1325,6 +1465,11 @@ load_required_packages=function(list_packages){
 
   
 }
+#####################################################################
+#' getCurrentFileLocation
+#' get the path of the current R script
+#' @output the path of the current R script
+#####################################################################
 getCurrentFileLocation <-  function()
 {
   require(tibble)
@@ -1362,30 +1507,32 @@ computeCorrelationMatrixModel <- function(coal.events.times.sim, DeltaList, samp
 {
   
   require(lineup)
-  # list_corr_mat<-parallel::mclapply(1:length(DeltaList),mc.cores=parallel::detectCores()-1, 
-  #                                    FUN=function(k, sample.size,sim, coal.events.times.sim )
-  #                                    {
-  #                                      
-  #                                      matrixCurrentValue<-matrix(coal.events.times.sim[k,], nrow=sim , ncol=sample.size-1, byrow=TRUE)
-  #                       
-  #                                      result <- cor(matrixCurrentValue)
-  #                                      return(as.matrix(result))
-  #                                      
-  #                                    },sample.size,sim, coal.events.times.sim )
-  list_corr_mat<-lapply(1:length(DeltaList), 
-                                    FUN=function(k, sample.size,sim, coal.events.times.sim )
-                                    {
-                                      
-                                      matrixCurrentValue<-matrix(coal.events.times.sim[k,], nrow=sim , ncol=sample.size-1, byrow=TRUE)
-                                      
-                                      result <- cor(matrixCurrentValue)
-                                      return(as.matrix(result))
-                                      
-                                    },sample.size,sim, coal.events.times.sim )
+  list_corr_mat<-parallel::mclapply(1:length(DeltaList),mc.cores=parallel::detectCores()-1, 
+                                     FUN=function(k, sample.size,sim, coal.events.times.sim )
+                                     {
+                                       
+                                       matrixCurrentValue<-matrix(coal.events.times.sim[k,], nrow=sim , ncol=sample.size-1, byrow=TRUE)
+                        
+                                       result <- cor(matrixCurrentValue)
+                                       return(as.matrix(result))
+                                       
+                                     },sample.size,sim, coal.events.times.sim )
+
   return(list_corr_mat)
   
 }
-#############################################################################################
+####################################################################################################################
+####################################################################################################################
+####################################################################################################################
+####################################################################################################################
+####################################################################################################################
+####################################################################################################################
+####################################################################################################################
+####################################################################################################################
+####################################################################################################################
+####################################################################################################################
+####################################################################################################################
+####################################################################################################################
 sim = 10000
 sample.size = 10
 runScenarioA = TRUE
@@ -1458,7 +1605,7 @@ if (doTestA)
 }
 if (!doJustBenchMark){
 ######################################################################################
-# Scenario A with stochastic population size
+# Scenario BD coalescent with stochastic population size
 
 if (runScenarioA){
   number.ancestors.Transition=bigstatsr::FBM(length(DeltaList),sim)
@@ -1549,7 +1696,7 @@ pryr::mem_change(rm(number.ancestors.Transition))
 }
 
 ######################################################################################
-#Scenario B(cancer model)
+#Scenario M*, M_k(cancer model)
 if (runScenarioB){
   
   coal.events.times.simB=bigstatsr::FBM(length(DeltaList),sim*(sample.size-1))
@@ -1572,9 +1719,9 @@ if (runScenarioB){
     list_corr_mat <- computeCorrelationMatrixModel(coal.events.times.simB, DeltaList, sample.size, sim, path_to_save)
     saveRDS(list_corr_mat, file=paste(path_to_save,"/", "list_corr_mat_B_","_",sample.size,"_K=",K,"_", sim, ".rds", sep=""))
     
-  #  if (i < length(K.list)){
-   #   listDataFramesA<-simulateA.parallel(DeltaList, GammaList, sim, sample.size, Time.Origin.STD, coal.events.times.simA)
-   # }
+    if (i < length(K.list)){
+      listDataFramesA<-simulateA.parallel(DeltaList, GammaList, sim, sample.size, Time.Origin.STD, coal.events.times.simA)
+    }
     
   }
   
@@ -1592,8 +1739,6 @@ if (runScenarioB){
 
 if (runScenarioC)
 {
-
-  
   coal.events.times.simC=bigstatsr::FBM(length(DeltaList),sim*(sample.size-1))
   
   listDataFramesC<-simulateC.parallel(DeltaList, GammaList, sim, sample.size,  coal.events.times.simC)
