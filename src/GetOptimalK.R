@@ -149,7 +149,7 @@ for(i in  2:length(K.list)){
                                       paste(path_to_save,"/", "listDataFramesA_10_",nB_10,".rds", sep=""), 
                                       fileB)
 
-  print(unlist(ratio.data.frameAB$RatioMedianA1overA2))
+  #print(unlist(ratio.data.frameAB$RatioMedianA1overA2))
   norm_2 <- sum((ratio.data.frameAB$RatioMedianA1overA2-rep(1, length(ratio.data.frameAB$RatioMedianA1overA2)))^2)
   print(paste("For K=",K," the 2-norm is ", norm_2 ))
   if (norm_2 < min_norm)

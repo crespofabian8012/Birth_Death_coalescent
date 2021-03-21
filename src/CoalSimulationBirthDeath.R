@@ -265,15 +265,15 @@ modelCoalB_MAster <- function(n, Torigin, Delta, Gamma) {
   return(u)
 }
 ################################################################################################################
-#' modelCoalB_MAster
+#' modelCoalHybrid
 #'
-#' Coalescent  times from sample size n to sample size nB
+#' Coalescent  times from sample size n to sample size nB for Kingsman coalescent  model
 #' @param n The sample size at time 0(present time)
 #' @param Torigin The time of origin
 #' @param Delta The parameter Delta
 #' @param Gamma The parameter Gamma
 #' @param nB The sample size when the Hybrid model switchs from M_K to BD coalescent
-#' @return return the list of coalescent times in model Hybrid
+#' @return return the list of coalescent times from sample size n to sample size nB for Kingsman coalescent model
 ################################################################################################################
 modelCoalHybrid <- function(n, Torigin, Delta, Gamma, nB) {
   w <- standardCoalFrom(nB + 1, n)
