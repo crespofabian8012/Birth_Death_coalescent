@@ -106,28 +106,28 @@ InverseLambdaB <- function(s, Delta, Gamma, Torigin)
 ################################################################################################################
 #' standard2model
 #'
-#' Kignman coalescent  time to model time M_2
+#' Kingsman coalescent  time to  M_0 model time
 #' @param Torigin The time of origin
 #' @param Delta The parameter Delta
 #' @param Gamma The parameter Gamma
 #' @param u The time variable u in model time
-#' @return return the model time in model M equivalent to Kingman coalescent time u
+#' @return return the model time in model M_k with K=0 equivalent to Kingsman coalescent time u
 ########################################################################################
-standard2model <- function(Torigin, Delta, Gamma, u)
-  (log(1 + Delta * u - exp(-Delta * Torigin)) - log(1 + (Delta * u - 1) *
+standard2model <- function(u,Torigin, Delta, Gamma)
+  (2*Delta/Gamma)*(log(1 + Delta * u - exp(-Delta * Torigin)) - log(1 + (Delta * u - 1) *
                                                       exp(-Delta * Torigin))) / Delta
 
 
 ################################################################################################################
 #' standard2modelB_K
 #'
-#' Kignman coalescent  time to time in model  M_K
-#' @param u The time variable u in Kingman coalescent time
+#' from Kingsman coalescent  time to M_K model time
+#' @param u The time variable u is in Kingsman coalescent time
 #' @param Torigin The time of origin
 #' @param Delta The parameter Delta
 #' @param Gamma The parameter Gamma
 #' @param K The parameter K of the model M_K
-#' @return return the model time in model M_K equivalent to Kingman coalescent time u
+#' @return return the model time in model M_K equivalent to Kingsman coalescent time u
 ################################################################################################################
 standard2modelB_K <- function(u, Torigin, Delta, Gamma, K) {
   minus.exp.Delta.Torigin = exp(-Delta * Torigin)
@@ -141,13 +141,13 @@ standard2modelB_K <- function(u, Torigin, Delta, Gamma, K) {
 ################################################################################################################
 #' standard2modelB
 #'
-#' Kignman coalescent  time to time in model  M_K
-#' @param u The time variable u in Kingman coalescent time
+#' Kingsman coalescent  time to time in model  M_K
+#' @param u The time variable u in Kingsman coalescent time
 #' @param Torigin The time of origin
 #' @param Delta The parameter Delta
 #' @param Gamma The parameter Gamma
 #' @param K The parameter K of the model M*
-#' @return return the model time in model M* equivalent to Kingman coalescent time u
+#' @return return the model time in model M* equivalent to Kingsman coalescent time u
 ################################################################################################################
 standard2modelB <- function(u, Torigin, Delta, Gamma, K) {
   minus.exp.Delta.Torigin = exp(-Delta * Torigin)
@@ -161,11 +161,11 @@ standard2modelB <- function(u, Torigin, Delta, Gamma, K) {
 #' standard2modelB_Mstar
 #'
 #' Kignman coalescent  time to time in model  M*
-#' @param u The time variable u in Kingman coalescent time
+#' @param u The time variable u in Kingsman coalescent time
 #' @param Torigin The time of origin
 #' @param Delta The parameter Delta
 #' @param Gamma The parameter Gamma
-#' @return return the model time in model M* equivalent to Kingman coalescent time  u
+#' @return return the model time in model M* equivalent to Kingsman coalescent time  u
 ################################################################################################################
 standard2modelB_Mstar <- function(u, Torigin, Delta, Gamma) {
   result = InverseLambdaB(u, Delta, Gamma, Torigin)
@@ -198,22 +198,26 @@ standardCoalFrom <-
 ################################################################################################################
 #' modelCoal
 #'
-#' Coalescent  times from sample size n to sample size 1 for model M_2
+#' Coalescent  times from sample size n to sample size 1 for model M_0
 #' @param n The sample size at time 0(present time)
 #' @param Torigin The time of origin
 #' @param Delta The parameter Delta
 #' @param Gamma The parameter Gamma
-#' @return return the list of coalescent times in model M_2
+#' @return return the list of coalescent times in model M_0
 ################################################################################################################
 modelCoal <- function(n, Torigin, Delta, Gamma) {
   w <- standardCoal(n)
   # time until i=n-1,...,1 ancestors
+  cumulativeSTDCoaltimes <-
+    unlist(lapply(1:(n - 1), function(i)
+      sum(w[i:(n - 1)])))
   u <-
-    standard2model(Torigin, Delta, Gamma, unlist(lapply(1:(n - 1), function(i)
-      sum(w[i:(n - 1)]))))
-  u <- c(u, 0)
-  unlist(lapply(1:(n - 1), function(i)
-    u[i] - u[i + 1]))
+    unlist(lapply(
+      cumulativeSTDCoaltimes,
+      FUN = function(x)
+        standard2model(x, Torigin, Delta, Gamma)
+    ))
+  return(u)
 }
 ################################################################################################################
 #' modelCoalB_K
@@ -863,7 +867,7 @@ simulateB_K = function(i,
 #' @param Time.Origin.STD: the  time of origin
 #' @param coal.events.times.simB: a big matrix bigstatsr::FBM(length(DeltaList),sim*(sample.size-1))
 #' of size to store the simulated coalescent times
-#' @param K: the  parameter K of model M_K
+#' @param K: the  parameter K>=0 of model M_K
 #' @return: a list of data frame(sample.size -1 columns ) with the stats for the coalescent times
 #' for model M_K(one data frame per each Delta value)
 ################################################################################################################
@@ -907,7 +911,13 @@ simulateB_K.parallel = function(DeltaList,
                        
                        TimeOrigin = Time.Origin.STD[i, j]
                        
-                       coal.events.times = modelCoalB_K(sample.size, TimeOrigin, DeltaList[i], GammaList[i], K)
+                       if (K>0){
+                         
+                         coal.events.times = modelCoalB_K(sample.size, TimeOrigin, DeltaList[i], GammaList[i], K)
+                       }
+                       else{#K=0
+                         coal.events.times = modelCoal(sample.size, TimeOrigin, DeltaList[i], GammaList[i])
+                       }
                        
                        print(
                          paste(
@@ -1988,11 +1998,11 @@ InverseTransformedLambda <- function(s, Delta, Gamma)
 ################################################################################################################
 #' standard2modelC
 #'
-#' Kignman coalescent  time to model time C
+#' Kingsnman coalescent  time to model time C
 #' @param u The time variable u in model time
 #' @param Delta The parameter Delta
 #' @param Gamma The parameter Gamma
-#' @return return the model time in model C equivalent to Kingman coalescent time u
+#' @return return the model time in model C equivalent to Kingsman coalescent time u
 ################################################################################################################
 standard2modelC <- function(u, Delta, Gamma)
 {
