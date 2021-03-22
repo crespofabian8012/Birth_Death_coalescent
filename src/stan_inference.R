@@ -251,9 +251,17 @@ fit_stan <- stan(file=path_to_stan_model_1population, data=input_stan, refresh=1
 #### Post processing the stan output
 #########################################################################
 #########################################################################
-check_treedepth(fit_stan)
-check_energy(fit_stan)
-check_div(fit_stan)
+fit_stan
+rstan::check_treedepth(fit_stan)
+rstan::check_energy(fit_stan)
+rstan::check_hmc_diagnostics(fit_stan)
+rstan::get_divergent_iterations(fit_stan)
+rstan::get_max_treedepth_iterations(fit_stan)
+rstan::get_num_leapfrog_per_iteration(fit_stan)
+rstan::get_num_divergent(fit_stan)
+rstan::get_num_max_treedepth(fit_stan)
+rstan::get_bfmi(fit_stan)
+rstan::get_low_bfmi_chains(fit_stan)
 summary(fit_stan)
 rstan::plot(fit_stan)
 bayesplot::mcmc_trace(as.matrix(fit_stan),pars=c("delta","torigin"),
