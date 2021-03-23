@@ -63,14 +63,13 @@ lapply(list_packages,
 #### M_K approximation model 
 #########################################################################
 #########################################################################
-sim = 100
+sim = 1000
 sample.size = 20
-K = 2
+K = 0.8
 path_to_save = getCurrentFileLocation()
 
-GammaList = c(100, 10)
-DeltaList = rep(1, length(GammaList))
-#DeltaList = GammaList
+GammaList = c(100,10)
+DeltaList = GammaList
 
 Time.Origin.STD <-
   bigstatsr::FBM(length(DeltaList), sim , type = "double", init = 0)
@@ -198,11 +197,7 @@ saveRDS(
 #### Bayesian inference with stan
 #########################################################################
 #########################################################################
-meanCoalescenTimes =listDataFramesB[[1]]$mean
-medianCoalescenTimes =listDataFramesB[[1]]$median
-meanTimeOrigin = meansTorigin[1]
-medianTimeOrigin = listToriginCI[3]
-trueDelta =100
+trueDelta =DeltaList[1]
 library(extraDistr)
 library(ggplot2)
 library(tidyr)
@@ -228,7 +223,8 @@ conditionalDensityTOrigin_pdf <- function(y, delta) {
   exp(sapply(y, FUN = conditionalDensityTOrigin_lpdf, delta=delta ))
 }
 print(integrate(conditionalDensityTOrigin_pdf, lower = 0, upper = Inf, trueDelta))
-yr <- conditionalDensityTOrigin_rng(delta=trueDelta)
+
+yr <- conditionalDensityTOrigin_rng(delta=trueDelta, sample.size)
 all.equal(integrate(conditionalDensityTOrigin_pdf, lower = 0, upper = yr,  trueDelta)$value,
           conditionalDensityTOrigin_cdf(yr, delta=trueDelta))
 
@@ -238,20 +234,37 @@ all.equal(exp(conditionalDensityTOrigin_lcdf(yr, delta=trueDelta)),conditionalDe
 #########################################################################
 #########################################################################
 #########################################################################
-#### Run stan model
+#### Run stan model with true delta =100
 #########################################################################
 #########################################################################
-K = 2
 theta =1
+meanCoalescenTimes =listDataFramesB[[1]]$mean
+medianCoalescenTimes =listDataFramesB[[1]]$median
+meanTimeOrigin = meansTorigin[1]
+medianTimeOrigin = listToriginCI[3]
+scaled.meanCoalescenTimes = theta *meanCoalescenTimes
+trueDelta =DeltaList[1]
+input_stan<-list(K=K, sample_size=sample.size, sorted_coalescent_times_scaled_by_theta= c(0.0,scaled.meanCoalescenTimes))
+fit_stan100 <- stan(file=path_to_stan_model_1population, data=input_stan, refresh=100,
+                chains=4, seed=803214053, iter = 5000, verbose = TRUE)
+fit_stan100
+#########################################################################
+#### Run stan model with true delta =10
+#########################################################################
+#########################################################################
+theta =1
+meanCoalescenTimes =listDataFramesB[[2]]$mean
+meanTimeOrigin = meansTorigin[2]
+trueDelta =DeltaList[2]
 scaled.meanCoalescenTimes = theta *meanCoalescenTimes
 input_stan<-list(K=K, sample_size=sample.size, sorted_coalescent_times_scaled_by_theta= c(0.0,scaled.meanCoalescenTimes))
-fit_stan <- stan(file=path_to_stan_model_1population, data=input_stan, refresh=1,
-                chains=4, seed=803214053)
+fit_stan10 <- stan(file=path_to_stan_model_1population, data=input_stan, refresh=100,
+                    chains=4, seed=803214053, iter = 5000)
+fit_stan10
 #########################################################################
 #### Post processing the stan output
 #########################################################################
 #########################################################################
-fit_stan
 rstan::check_treedepth(fit_stan)
 rstan::check_energy(fit_stan)
 rstan::check_hmc_diagnostics(fit_stan)

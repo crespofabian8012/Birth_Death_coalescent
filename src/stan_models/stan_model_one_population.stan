@@ -3,11 +3,17 @@ functions{
         real number_ancestors_population_when_sample_minus_one;
         real U;
         real result;
-        number_ancestors_population_when_sample_minus_one = 10*sample_size;
+        real term;
+        number_ancestors_population_when_sample_minus_one = 2*sample_size;
         U = gamma_rng(number_ancestors_population_when_sample_minus_one+1, 1);
-        result =  - log(1- delta /(U+delta));
-        //real result =  -(1.0 / delta) * log(1- delta /(U+delta));
-        return(result);
+        term = 1.0- delta /(U+delta);
+        if (term <= 0){
+          reject("term must not be negative; found term=", term);
+        }
+        else{
+            result= -(1.0 / delta)*log(term);
+        }
+          return(result);
   }
   real conditionalDensityTOrigin_pdf( real y, real delta) {
       real result;
@@ -15,16 +21,12 @@ functions{
       real term2;
       real term3;
       real partial;
-      // term1 = exp(-1.0*delta*y);
-      // term2 = delta * term1;
-      // term3 = 1.0-term1;
-      // partial = delta * term2 /(term3 * term3);
-      // partial = partial * exp( -1 * term2/term3);
-      term1 = exp(-1.0*y);
+      term1 = exp(-1.0*delta*y);
       term2 = delta * term1;
       term3 = 1.0-term1;
-      partial =  term2 /(term3 * term3);
+      partial = delta * term2 /(term3 * term3);
       partial = partial * exp( -1 * term2/term3);
+
       result  = partial;
       return(result);
    }
@@ -38,15 +40,11 @@ functions{
      real term2;
      real term3;
      real result;
-     // term1 = exp(-1.0 * delta * y);
-     // term2 = delta * term1;
-     // term3 = 1.0-term1;
-     // result = exp( -1 * term2/term3);
-
-     term1 = exp(-1.0 * y);
+     term1 = exp(-1.0 * delta * y);
      term2 = delta * term1;
      term3 = 1.0-term1;
      result = exp( -1 * term2/term3);
+
      return(result);
   }
   real conditionalDensityTOrigin_lcdf(real y, real delta) {
@@ -62,25 +60,15 @@ functions{
          real delta,
          real K){
 
-    real a = 1.0 - exp(-1.0 * (torigin - t));
+    real a = 1.0 - exp(-1.0 * delta * (torigin - t));
     real first_term = 2.0 * log(a);
-    real second_term = -1.0 * t;
-    real third_term = exp( t);
+    real second_term = -1.0 * delta * t;
+    real third_term = exp(delta * t);
     real above_term = first_term + second_term;
-    real b = 1.0 - exp(-1.0 * torigin);
+    real b = 1.0 - exp(-1.0 * delta * torigin);
     real  below_term = 2.0 * log(b);
     real extra_term = log(1+ (K /delta)*b*(third_term -1.0) / a );
     real logH;
-
-    // real a = 1.0 - exp(-1.0 * delta * (torigin - t));
-    // real first_term = 2.0 * log(a);
-    // real second_term = -1.0 * delta * t;
-    // real third_term = exp(delta * t);
-    // real above_term = first_term + second_term;
-    // real b = 1.0 - exp(-1.0 * delta * torigin);
-    // real  below_term = 2.0 * log(b);
-    // real extra_term = log(1+ (K /delta)*b*(third_term -1.0) / a );
-    // real logH;
     if (K==0)
         logH = above_term - below_term;
     else
@@ -92,8 +80,6 @@ functions{
          real delta,
          real K)
          {
-         //if (t==0)
-        //    return (0.0);
           real model_time=0.0;
           real a = exp(delta * t) - 1.0;
           real b = 1.0 - exp(-1.0 * delta * torigin);
@@ -106,25 +92,16 @@ functions{
             return(2.0*model_time/ delta);
           }
          else{
-           // c = exp(-1.0 * delta * torigin);
-           // d = 1.0 -c;
-           // a = ((K / delta) * d) - c;
-           // b = 1.0 - (K/ delta)*d;
-           //
-           // numerator =(a*exp(delta*t)+b);
-           // denominator = 1-exp(-delta*(torigin-t));
-           // numerator =(a*exp(delta*t)+b);
-           // denominator = 1-exp(-delta*(torigin-t));
-
-           c = exp(-1.0  * torigin);
+           c = exp(-1.0 * delta * torigin);
            d = 1.0 -c;
            a = ((K / delta) * d) - c;
            b = 1.0 - (K/ delta)*d;
 
-           numerator =(a*exp(t)+b);
-           denominator = 1-exp(-1.0*(torigin-t));
+           numerator =(a*exp(delta*t)+b);
+           denominator = 1-exp(-delta*(torigin-t));
+           numerator =(a*exp(delta*t)+b);
+           denominator = 1-exp(-delta*(torigin-t));
 
-          //model_time = (2.0 / K )*log(numerator/denominator);
            model_time = (2.0 / K )*log(numerator/denominator);
            return(model_time);
             }
@@ -168,13 +145,14 @@ data{
 }
 parameters{
   //real<lower=0> theta;
+  real<lower=0> alpha;
   real<lower=0> delta;
   real<lower=0> torigin;
 }
 model{
   //theta~exponential(10);
-  //theta=1
-  delta~exponential(10);
+  alpha~gamma(0.001, 0.001);
+  delta~exponential(alpha);
   torigin~conditionalDensityTOrigin(delta);
 
   //target += log(parameter_exponential_torigin) - torigin * parameter_exponential_torigin;
