@@ -36,17 +36,17 @@ source(paste0(path,"/CoalSimulationBirthDeath.R"))
 ####################################################################################################################
 ####################################################################################################################
 sim = 100
-sample.size = 10
-runScenarioA = TRUE
-runScenarioC = TRUE
-runScenarioB = TRUE
+sample.size = 100
+runScenarioA = FALSE
+runScenarioC = FALSE
+runScenarioB = FALSE
 doTestA = FALSE
 varyDelta = FALSE
-doJustBenchMark = FALSE
-runHybridScenario = TRUE
+doJustBenchMark = TRUE
+runHybridScenario = FALSE
 number.sim.trees = 5
 simulate.Trees = FALSE
-K = 1
+K = 0.8
 
 list_packages <-
   c(
@@ -88,8 +88,6 @@ lapply(list_packages,
 path_to_save = getCurrentFileLocation()
 
 GammaList = c(0.001,  0.1,  10)
-
-
 DeltaList = rep(1, length(GammaList))
 
 Time.Origin.STD <-
@@ -117,7 +115,7 @@ coal.events.times.simHybrid = bigstatsr::FBM(length(DeltaList), sim * (sample.si
 nB = floor(sample.size / 2)
 
 
-mprimeList <- c(99, 95, 90, 80, 70, 50)
+nB_List <- c(floor(sample.size / 2), floor(sample.size / 4))
 
 
 if (doTestA)
@@ -147,15 +145,21 @@ if (doTestA)
       sep = ""
     )
   )
-  meansTorigin.test <-
-    bigstatsr::big_apply(
-      Time.Origin.STD.test,
-      a.FUN = function(Time.Origin.STD.test, ind)
-        rowMeans(Time.Origin.STD.test[ind,]),
-      ind = rows_along(Time.Origin.STD.test),
-      a.combine = 'c',
-      block.size = 100
-    )
+  if (length(DeltaList)==1){
+    meansTorigin.test <-mean(Time.Origin.STD.test[1,])
+  }
+  else{
+    meansTorigin.test <-
+      bigstatsr::big_apply(
+        Time.Origin.STD.test,
+        a.FUN = function(Time.Origin.STD.test, ind)
+          rowMeans(Time.Origin.STD.test[ind,]),
+        ind = rows_along(Time.Origin.STD.test),
+        a.combine = 'c',
+        block.size = 100
+      )
+    
+  }
   
   saveRDS(
     meansTorigin.test,
@@ -254,15 +258,22 @@ if (!doJustBenchMark) {
       )
     )
     
-    meansTorigin <-
-      bigstatsr::big_apply(
-        Time.Origin.STD,
-        a.FUN = function(Time.Origin.STD, ind)
-          rowMeans(Time.Origin.STD[ind,]),
-        ind = rows_along(Time.Origin.STD),
-        a.combine = 'c',
-        block.size = 500
-      )
+    if (length(DeltaList)==1){
+      meansTorigin <-mean(Time.Origin.STD[1,])
+    }
+    else{
+      meansTorigin <-
+        bigstatsr::big_apply(
+          Time.Origin.STD,
+          a.FUN = function(Time.Origin.STD, ind)
+            rowMeans(Time.Origin.STD[ind,]),
+          ind = rows_along(Time.Origin.STD),
+          a.combine = 'c',
+          block.size = 500
+        )
+      
+    }
+   
     
     saveRDS(
       meansTorigin,
@@ -278,17 +289,25 @@ if (!doJustBenchMark) {
       )
     )
     
-    listToriginCI <-
-      bigstatsr::big_apply(
-        Time.Origin.STD,
-        a.FUN = function(Time.Origin.STD, ind) {
-          quants <- c(0.025, 0.50, 0.975)
-          matrixStats::rowQuantiles(Time.Origin.STD[ind,],  probs = quants)
-        } ,
-        ind = rows_along(Time.Origin.STD),
-        a.combine = "rbind",
-        block.size = 500
-      )
+    if (length(DeltaList)==1){
+      quants <- c(0.025, 0.50, 0.975)
+      listToriginCI<-quantile(Time.Origin.STD[1,],  probs = quants)
+    }
+    else{
+      listToriginCI <-
+        bigstatsr::big_apply(
+          Time.Origin.STD,
+          a.FUN = function(Time.Origin.STD, ind) {
+            quants <- c(0.025, 0.50, 0.975)
+            matrixStats::rowQuantiles(Time.Origin.STD[ind,],  probs = quants)
+          } ,
+          ind = rows_along(Time.Origin.STD),
+          a.combine = "rbind",
+          block.size = 500
+        )
+      
+    }
+   
     saveRDS(
       listToriginCI,
       file = paste(
@@ -326,9 +345,9 @@ if (!doJustBenchMark) {
     list_corr_mat <-
       computeCorrelationMatrixModel(coal.events.times.simA, DeltaList, sample.size, sim)
     
-    pryr::mem_change(rm(coal.events.times.simA))
-    pryr::mem_change(rm(number.ancestors.simA))
-    pryr::mem_change(rm(number.ancestors.Transition))
+    # pryr::mem_change(rm(coal.events.times.simA))
+    # pryr::mem_change(rm(number.ancestors.simA))
+    # pryr::mem_change(rm(number.ancestors.Transition))
     
     saveRDS(
       list_corr_mat,
@@ -420,7 +439,7 @@ if (!doJustBenchMark) {
   #hybrid scenario
   
   if (runHybridScenario) {
-    number.Fail.hybrid = bigstatsr::FBM(length(mprimeList), length(GammaList))
+    number.Fail.hybrid = bigstatsr::FBM(length(nB_List), length(GammaList))
     coal.events.times.simHybrid = bigstatsr::FBM(length(DeltaList), sim *
                                                    (sample.size - 1))
     number.ancestors.simHybrid = bigstatsr::FBM(length(DeltaList), sim * (sample.size -
@@ -537,33 +556,38 @@ if (!doJustBenchMark) {
   if (runScenarioB) {
     coal.events.times.simB = bigstatsr::FBM(length(DeltaList), sim * (sample.size -
                                                                         1))
-    print("starting simulation M*")
-    #K.list= seq(0.5,2, by=0.1)
-    #K.list= seq(2,2, by=1)
-    K.list = c(0.8)
+   # print("starting simulation M*")
+    # #K.list= seq(0.5,2, by=0.1)
+    # #K.list= seq(2,2, by=1)
+     K.list = seq(0.5,1.2, by=0.1)
+    # K.list<-c(0.8)
     
-    listDataFramesB <-
-      simulateB_MAster.parallel(DeltaList,
-                                GammaList,
-                                sim,
-                                sample.size,
-                                Time.Origin.STD,
-                                coal.events.times.simB)
-    saveRDS(
-      listDataFramesB,
-      file = paste(
-        path_to_save,
-        "/",
-        "listDataFramesB_",
-        sample.size,
-        "_",
-        sim,
-        ".rds",
-        sep = ""
-      )
-    )
+    # listDataFramesB <-
+    #   simulateB_MAster.parallel(DeltaList,
+    #                             GammaList,
+    #                             sim,
+    #                             sample.size,
+    #                             Time.Origin.STD,
+    #                             coal.events.times.simB)
+    # saveRDS(
+    #   listDataFramesB,
+    #   file = paste(
+    #     path_to_save,
+    #     "/",
+    #     "listDataFramesB_",
+    #     sample.size,
+    #     "_",
+    #     sim,
+    #     ".rds",
+    #     sep = ""
+    #   )
+    # )
+  
+   
+    
     
     print("starting simulation M_k")
+
     for (i in  1:length(K.list)) {
       K = K.list[i]
       listDataFramesB <-
@@ -612,17 +636,21 @@ if (!doJustBenchMark) {
         )
       )
       
-      if (i < length(K.list)) {
-        listDataFramesA <-
-          simulateA.parallel(
-            DeltaList,
-            GammaList,
-            sim,
-            sample.size,
-            Time.Origin.STD,
-            coal.events.times.simA
-          )
-      }
+      # if (i < length(K.list)) {
+
+      #   listDataFramesA <-
+      # simulateA.parallel(
+      #   DeltaList,
+      #   GammaList,
+      #   sim,
+      #   sample.size,
+      #   Time.Origin.STD,
+      #   coal.events.times.simA,
+      #   number.ancestors.simA,
+      #   number.ancestors.Transition
+      # )
+    
+      # }
       
     }
     
@@ -744,77 +772,196 @@ if (!doJustBenchMark) {
     
   }
   
-  
 } else{
   #################################################################################################
   #Benchmarking
-  #uncomment this if you want to benchmark the code
   print("Starting simulation benchmark...")
+
+   number_runs=100
+   sample.size=1000
+   
+   sim=1
+   GammaList = c( 10)
+   DeltaList = rep(1, length(GammaList))
+
+
+  Time.Origin.STD <-
+  bigstatsr::FBM(length(DeltaList), sim , type = "double", init = 0)
   
-  listDataFramesA <-
-    simulateA.parallel(DeltaList,
-                       GammaList,
-                       sim,
-                       sample.size,
-                       Time.Origin.STD,
-                       coal.events.times.simA)
+
+   coal.events.times.simA = bigstatsr::FBM(length(DeltaList), sim * (sample.size -
+                                                                    1))
+
+    number.ancestors.Transition = bigstatsr::FBM(length(DeltaList), sim)
+
+    number.ancestors.simHybrid = bigstatsr::FBM(length(DeltaList), sim * (sample.size -
+                                                                        1))
+    
+    nB_List <- c(floor(sample.size / 2), floor(sample.size / 4))
+  
+    number.Fail.hybrid = bigstatsr::FBM(length(nB_List), length(GammaList))
+    coal.events.times.simHybrid = bigstatsr::FBM(length(DeltaList), sim *
+                                                   (sample.size - 1))
+    number.ancestors.simHybrid = bigstatsr::FBM(length(DeltaList), sim * (sample.size -
+                                                                            1))
+ 
+
+    listDataFramesA <-
+      simulateA.parallel(
+        DeltaList,
+        GammaList,
+        sim,
+        sample.size,
+        Time.Origin.STD,
+        coal.events.times.simA,
+        number.ancestors.simA,
+        number.ancestors.Transition
+      )
+
+
+  print(Time.Origin.STD[])
   K = 1
+
+ 
+  number.Fail.hybrid = bigstatsr::FBM(length(nB_List), length(GammaList))
+
   mbm <-
     microbenchmark::microbenchmark(
       "BD" = listDataFramesA <-
-        simulateA.parallel(
-          DeltaList,
-          GammaList,
-          sim,
-          sample.size,
-          Time.Origin.STD,
-          coal.events.times.simA
-        ),
-      "M*" = listDataFramesB <-
-        simulateB_MAster.parallel(
-          DeltaList,
-          GammaList,
-          sim,
-          sample.size,
-          Time.Origin.STD,
-          coal.events.times.simB
-        ),
-      "M0.8" = listDataFramesB <-
-        simulateB_K.parallel(
-          DeltaList,
-          GammaList,
-          sim,
-          sample.size,
-          Time.Origin.STD,
-          coal.events.times.simB,
-          0.8
-        ),
-      "M2" = listDataFramesB <-
-        simulateB_K.parallel(
-          DeltaList,
-          GammaList,
-          sim,
-          sample.size,
-          Time.Origin.STD,
-          coal.events.times.simB,
-          2
-        ),
-      "H50" = listDataFramesHybrid <-
-        simulateHybrid.parallel(
-          DeltaList,
-          GammaList,
-          sim,
-          sample.size,
-          Time.Origin.STD,
-          coal.events.times.simHybrid,
-          50,
-          number.Fail.hybrid,
-          6,
-          2,
-          number.ancestors.simHybrid,
-          number.ancestors.Transition
-        ),
-      times = 100L
+       simulateA ( DeltaList[1],
+                  GammaList[1],
+                     sim,
+                     sample.size,
+                     Time.Origin.STD,
+                     1,
+                     coal.events.times.simA,
+                     number.ancestors.simA,
+                     number.ancestors.Transition),
+        "M*" = listDataFramesB <-
+             simulateB_MAster (1,  DeltaList[1],
+                                   GammaList[1],
+                                    sim,
+                                    sample.size,
+                                    Time.Origin.STD,
+                                     coal.events.times.simB),
+
+        "M0.8" = listDataFramesB <-simulateB_K (1,
+                       DeltaList[1],
+                       GammaList[1],
+                       sim,
+                       sample.size,
+                       Time.Origin.STD,
+                       coal.events.times.simB,
+                       0.8),
+
+        "M2" = listDataFramesB <-simulateB_K (1,
+                       DeltaList[1],
+                       GammaList[1],
+                       sim,
+                       sample.size,
+                       Time.Origin.STD,
+                       coal.events.times.simB,
+                       2),
+        "Hn/2" =simulateHybrid(1,DeltaList[1],
+                                GammaList[1],
+                                   sim,
+                                   sample.size,
+                                   Time.Origin.STD,
+                                   coal.events.times.simHybrid,
+                                   nB_List[1],
+                                   number.Fail.hybrid,
+                                   1,
+                                   2,
+                                   number.ancestors.simHybrid,
+                                   number.ancestors.Transition),
+        "Hn/4" =simulateHybrid(1,DeltaList[1],
+                                GammaList[1],
+                                   sim,
+                                   sample.size,
+                                   Time.Origin.STD,
+                                   coal.events.times.simHybrid,
+                                   nB_List[2],
+                                   number.Fail.hybrid,
+                                   2,
+                                   2,
+                                   number.ancestors.simHybrid,
+                                   number.ancestors.Transition)
+
+        # simulateA.parallel(
+        #   DeltaList,
+        #   GammaList,
+        #   sim,
+        #   sample.size,
+        #   Time.Origin.STD,
+        #   coal.events.times.simA,
+        #   number.ancestors.simA,
+        #   number.ancestors.Transition
+        # )
+        #,
+      # "M*" = listDataFramesB <-
+      #   simulateB_MAster.parallel(
+      #     DeltaList,
+      #     GammaList,
+      #     sim,
+      #     sample.size,
+      #     Time.Origin.STD,
+      #     coal.events.times.simB
+      #   )
+      #   ,
+      # "M0.8" = listDataFramesB <-
+      #   simulateB_K.parallel(
+      #     DeltaList,
+      #     GammaList,
+      #     sim,
+      #     sample.size,
+      #     Time.Origin.STD,
+      #     coal.events.times.simB,
+      #     0.8
+      #   ),
+      # "M2" = listDataFramesB <-
+      #   simulateB_K.parallel(
+      #     DeltaList,
+      #     GammaList,
+      #     sim,
+      #     sample.size,
+      #     Time.Origin.STD,
+      #     coal.events.times.simB,
+      #     2
+      #   )
+      # ,
+      # "Hn/2" = listDataFramesHybrid <-
+      #   simulateHybrid.parallel(
+      #     DeltaList,
+      #     GammaList,
+      #     sim,
+      #     sample.size,
+      #     Time.Origin.STD,
+      #     coal.events.times.simHybrid,
+      #     nB_List[1],
+      #     number.Fail.hybrid,
+      #     1,
+      #     2,
+      #     number.ancestors.simHybrid,
+      #     number.ancestors.Transition
+      #   )
+      #   ,
+      #   "Hn/4" = listDataFramesHybrid <-
+      #   simulateHybrid.parallel(
+      #     DeltaList,
+      #     GammaList,
+      #     sim,
+      #     sample.size,
+      #     Time.Origin.STD,
+      #     coal.events.times.simHybrid,
+      #     nB_List[2],
+      #     number.Fail.hybrid,
+      #     2,
+      #     2,
+      #     number.ancestors.simHybrid,
+      #     number.ancestors.Transition
+      #   )
+        ,
+      times = number_runs
     )
   print(mbm)
   
@@ -834,24 +981,32 @@ if (!doJustBenchMark) {
       axis.line = element_line(colour = "black")
     )
   plot_mbm
-  ggsave(paste(path_to_save, "/",  "plot_mbm_all.pdf", sep = ""))
-  ggsave(paste(path_to_save, "/", "plot_mbm_all.png", sep = ""))
-  ggsave(paste(path_to_save, "/", "plot_mbm_all.jpg", sep = ""))
+  ggsave(paste(path_to_save, "/",  "plot_mbm_n=", sample.size,"_runs=", number_runs, "_sim=", sim, ".pdf", sep = ""))
+  ggsave(paste(path_to_save, "/",  "plot_mbm_n=", sample.size,"_runs=", number_runs, "_sim=", sim, ".png", sep = ""), dpi=300, width=4, height=4)
+
   
   dev.off()
   
-  total.failed <-
-    bigstatsr::big_apply(
-      number.Fail.hybrid,
-      a.FUN = function(X, ind) {
-        rowSums(X[, ind, drop = FALSE])
-      },
-      a.combine = 'plus',
-      block.size = 10
-    )
+ if (length(nB_List)>1){
+   total.failed <-
+     bigstatsr::big_apply(
+       number.Fail.hybrid,
+       a.FUN = function(X, ind) {
+         rowSums(X[, ind, drop = FALSE])
+       },
+       a.combine = 'plus',
+       block.size = 10
+     )
   
+ }
+  else{
+    
+    total.failed <-sum(X[, 1, drop = FALSE])
+    
+  }
+  print(paste0("Total number failures in the Hybrid per k0 value in ", nB_List))
   print(total.failed)
+  print(paste0("Number failures, rows correspond to k0 values ", nB_List," and columns Gamma values ", GammaList))
   print(number.Fail.hybrid[])
-  
   
 }

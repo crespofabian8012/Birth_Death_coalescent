@@ -288,12 +288,29 @@ modelCoalHybrid <- function(n, Torigin, Delta, Gamma, nB) {
 ################################################################################################################
 #' expCoal
 #'
-#' Coalescent  times from sample size n to sample size 1
+#' Coalescent waiting times from sample size n to sample size 1
 #' @param n The sample size at time 0(present time)
-#' @param beta The exponent parameter in N(t)=N(0) exp(-beta*t) (time backwards)
+#' @param Delta The exponent parameter in N(t)=N(0) exp(-Delta*t) (time backwards)
+#' @param Gamma The exponent parameter in N(t)=N(0) exp(-Delta*t) (time backwards)
 #' @return return the list of coalescent times when the population is growing exponentially
 ################################################################################################################
-expCoal <- function(n, beta) {
+expCoalTimes <- function(n, Delta, Gamma) {
+  w <- standardCoal(n)
+  # time until i=n-1,...,1 ancestors
+  u <- unlist(lapply(1:(n - 1), function(i)
+    sum(w[i:(n - 1)])))
+  u <- log(1 + 0.5*Gamma * u) / Delta
+  return(unlist(u))
+}
+################################################################################################################
+#' expCoalWaitingTimes
+#'
+#' Coalescent waiting  times from sample size n to sample size 1
+#' @param n The sample size at time 0(present time)
+#' @param beta The exponent parameter in N(t)=N(0) exp(-beta*t) (time backwards)
+#' @return return the list of coalescent waiting times when the population is growing exponentially
+################################################################################################################
+expCoalWaitingTimes <- function(n, beta) {
   w <- standardCoal(n)
   # time until i=n-1,...,1 ancestors
   u <- unlist(lapply(1:(n - 1), function(i)
@@ -798,14 +815,226 @@ compute_stats_number_ancestors = function(sample.size,
   
 }
 ################################################################################################################
+#' simulateKingmanCoal.parallel
+#' simulate coalescent times for model Kingman parallel
+#' @param GammaList: the  paramater Gamma
+#' @param sim: the  number of simulations sim
+#' @param sample.size: the  sample size at time t=0
+#' @param coal.events.times.simKingman: a big matrix bigstatsr::FBM(length(DeltaList),sim*(sample.size-1))
+#' of size to store the simulated coalescent times
+#' @return: a list of data frame(sample.size -1 columns ) with the stats for the coalescent times
+#' for Kingman coal(one data frame per each Gamma value)
+################################################################################################################
+simulateKingmanCoal.parallel = function(DeltaList,GammaList,
+                                sim,
+                                sample.size,
+                                coal.events.times.simKingman)
+{
+  require(foreach)
+  require(doParallel)
+  require(doSNOW)
+  require(parallel)
+  require(doFuture)
+  require(bigstatsr)
+  require(stats)
+  require(rgenoud)
+  require(doRNG)
+  require(doMC)
+  
+  RNGkind("L'Ecuyer-CMRG")
+  a=as.numeric(Sys.time())
+  set.seed(floor(runif(1)*a)) #set seed to something
+
+
+
+  ncores = parallel::detectCores() - 1
+  innerCluster <-
+    parallel::makeCluster(ncores, type = "FORK", outfile = "")
+  on.exit(parallel::stopCluster(innerCluster), add = TRUE)
+  doParallel::registerDoParallel(innerCluster)
+  
+  
+  rng <- RNGseq(length(DeltaList) * sim, floor(runif(1)*a))
+  opts <- list(chunkSize = 2)
+  
+  tmp3 <- foreach::foreach(j = 1:sim, .combine = 'c') %:%
+    foreach::foreach(i = 1:length(GammaList),
+                     r = rng[(j - 1) * length(GammaList) + 1:length(GammaList)],
+                     .combine = 'c') %dopar% {
+                       rngtools::setRNG(r)
+
+                       
+                      coal.events.times = (2*GammaList[i] /DeltaList[i])*standardCoal(sample.size)
+                       
+                       print(
+                         paste(
+                           "finished Kingman coal in parallel for ",
+                           "Gamma",
+                           GammaList[i],
+                           " sim ",
+                           j,
+                           sep = " "
+                         )
+                       )
+                       positions <-
+                         cbind(rep(i, (sample.size - 1)), ((j - 1) * (sample.size - 1) + 1):(j *
+                                                                                               (sample.size - 1)))
+                       coal.events.times.simKingman[positions] <- rev(coal.events.times)
+                       NULL
+                     }
+  list.Data.Frames <-
+    parallel::mclapply(
+      1:length(GammaList),
+      mc.set.seed = TRUE,
+      mc.cores = parallel::detectCores() - 1,
+      FUN = function(k,
+                     sample.size,
+                     sim,
+                     coal.events.times.simKingman)
+      {
+        quants <- c(0.025, 0.50, 0.975)
+        matrixCurrentValue <-
+          matrix(
+            coal.events.times.simKingman[k, ],
+            nrow = sim ,
+            ncol = sample.size - 1,
+            byrow = TRUE
+          )
+        #quantiles<-apply( matrixCurrentValue , 2 , quantile , probs = quants , na.rm = TRUE )
+        quantiles <-
+          apply(matrixCurrentValue , 2 , quantile , probs = quants)
+        meanCoalTimes <- colMeans(matrixCurrentValue)
+        result <-
+          data.frame(
+            mean = meanCoalTimes,
+            LI = quantiles[1, ],
+            median = quantiles[2, ],
+            UI = quantiles[3, ]
+          )
+        result
+      },
+      sample.size,
+      sim,
+      coal.events.times.simKingman
+    )
+  
+  return(list.Data.Frames)
+}
+################################################################################################################
+#' simulateExponentialCoal.parallel
+#' simulate coalescent times for model Kingman parallel
+#' @param GammaList: the  parameter Gamma
+#' @param sim: the  number of simulations sim
+#' @param sample.size: the  sample size at time t=0
+#' @param coal.events.times.sim.Exp: a big matrix bigstatsr::FBM(length(DeltaList),sim*(sample.size-1))
+#' of size to store the simulated coalescent times
+#' @return: a list of data frame(sample.size -1 columns ) with the stats for the coalescent times
+#' for Exponential coal(one data frame per each Gamma value)
+################################################################################################################
+simulateExponentialCoal.parallel = function(DeltaList, GammaList,
+                                        sim,
+                                        sample.size,
+                                        coal.events.times.sim.Exp)
+{
+  require(foreach)
+  require(doParallel)
+  require(doSNOW)
+  require(parallel)
+  require(doFuture)
+  require(bigstatsr)
+  require(stats)
+  require(rgenoud)
+  require(doRNG)
+  require(doMC)
+  
+  RNGkind("L'Ecuyer-CMRG")
+  a=as.numeric(Sys.time())
+  set.seed(floor(runif(1)*a)) #set seed to something
+ 
+  ncores = parallel::detectCores() - 1
+  innerCluster <-
+    parallel::makeCluster(ncores, type = "FORK", outfile = "")
+  on.exit(parallel::stopCluster(innerCluster), add = TRUE)
+  doParallel::registerDoParallel(innerCluster)
+  
+  
+  rng <- RNGseq(length(DeltaList) * sim, floor(runif(1)*a))
+  opts <- list(chunkSize = 2)
+  
+  tmp3 <- foreach::foreach(j = 1:sim, .combine = 'c') %:%
+    foreach::foreach(i = 1:length(GammaList),
+                     r = rng[(j - 1) * length(GammaList) + 1:length(GammaList)],
+                     .combine = 'c') %dopar% {
+                       rngtools::setRNG(r)
+                       
+                       
+                       coal.events.times = expCoalTimes(sample.size, DeltaList[i], GammaList[i])
+                       
+                       print(
+                         paste(
+                           "finished exponential coal in parallel for ",
+                           "Gamma",
+                           GammaList[i],
+                           " sim ",
+                           j,
+                           sep = " "
+                         )
+                       )
+                       positions <-
+                         cbind(rep(i, (sample.size - 1)), ((j - 1) * (sample.size - 1) + 1):(j *
+                                                                                               (sample.size - 1)))
+                       coal.events.times.sim.Exp[positions] <- rev(coal.events.times)
+                       NULL
+                     }
+  list.Data.Frames <-
+    parallel::mclapply(
+      1:length(GammaList),
+      mc.set.seed = TRUE,
+      mc.cores = parallel::detectCores() - 1,
+      FUN = function(k,
+                     sample.size,
+                     sim,
+                     coal.events.times.sim.Exp)
+      {
+        quants <- c(0.025, 0.50, 0.975)
+        matrixCurrentValue <-
+          matrix(
+            coal.events.times.sim.Exp[k, ],
+            nrow = sim ,
+            ncol = sample.size - 1,
+            byrow = TRUE
+          )
+        #quantiles<-apply( matrixCurrentValue , 2 , quantile , probs = quants , na.rm = TRUE )
+        quantiles <-
+          apply(matrixCurrentValue , 2 , quantile , probs = quants)
+        meanCoalTimes <- colMeans(matrixCurrentValue)
+        result <-
+          data.frame(
+            mean = meanCoalTimes,
+            LI = quantiles[1, ],
+            median = quantiles[2, ],
+            UI = quantiles[3, ]
+          )
+        result
+      },
+      sample.size,
+      sim,
+      coal.events.times.sim.Exp
+    )
+  
+  return(list.Data.Frames)
+}
+################################################################################################################
 #' simulateB_K
 #' simulate coalescent times for model M_K for a single combination of Delta and Gamma
-#' @param i: the position of this vaalue of Delta in the DeltaList
+#' @param i: the position of this value of Delta in the DeltaList
 #' @param Delta: the  paratemer Delta
 #' @param Gamma: the  paratemer Gamma
 #' @param sim: the  number of simulations sim
 #' @param sample.size: the  sample size at time t=0
 #' @param Time.Origin.STD: the  time of origin
+#' @param coal.events.times.simB: a big matrix bigstatsr::FBM(length(DeltaList),sim*(sample.size-1))
+#' of size to store the simulated coalescent times
 #' @param K: the  parameter K of model M_K
 #' @return: a data frame(sample.size -1 columns ) with the stats for the coalescent times for model M_K
 ################################################################################################################
@@ -815,10 +1044,11 @@ simulateB_K = function(i,
                        sim,
                        sample.size,
                        Time.Origin.STD,
+                       coal.events.times.simB,
                        K)
 {
-  require(parallel)
-  coal.events.times.simB <- array(0, dim = c(sim, sample.size - 1))
+
+
   
   lapply(
     1:sim,
@@ -831,9 +1061,31 @@ simulateB_K = function(i,
                    i)
     {
       TimeOrigin = Time.Origin.STD[i, j]
-      coal.events.times = modelCoalB_K(sample.size, TimeOrigin, Delta, Gamma, K)
-      coal.events.times.simB[j, ] <<- rev(coal.events.times)
-      print(paste0("finished B sim", j, sep = " "))
+
+      if (K>0){
+                         
+          coal.events.times = modelCoalB_K(sample.size, TimeOrigin, Delta, Gamma, K)
+      }
+      else{#K=0
+          coal.events.times = modelCoal(sample.size, TimeOrigin, Delta, Gamma)
+        }
+
+     
+     positions <-cbind(rep(i, (sample.size - 1)), ((j - 1) * (sample.size - 1) + 1):(j *
+                  (sample.size - 1)))
+      coal.events.times.simB[positions] <- rev(coal.events.times)
+     
+        print(paste("finished B M_k  for Delta",
+                           Delta,
+                           "Gamma",
+                           Gamma,
+                           "K",
+                           K,
+                           " sim ",
+                           j,
+                           sep = " "
+                         )
+                       )
     },
     sample.size,
     Time.Origin.STD,
@@ -843,18 +1095,29 @@ simulateB_K = function(i,
     i
   )
   
+  
   quants <- c(0.025, 0.50, 0.975)
-  #quantiles<-apply( coal.events.times.simB , 2 , quantile , probs = quants , na.rm = TRUE )
+  matrixCurrentValue <-
+          matrix(
+            coal.events.times.simB[i, ],
+            nrow = sim ,
+            ncol = sample.size - 1,
+            byrow = TRUE
+          )
   quantiles <-
-    apply(coal.events.times.simB , 2 , quantile , probs = quants)
-  meanCoalTimes <- colMeans(coal.events.times.simB)
+          apply(matrixCurrentValue , 2 , quantile , probs = quants)
+  
+  meanCoalTimes <-
+          colMeans(matrixCurrentValue)
+  
   result <-
-    data.frame(
-      mean = meanCoalTimes,
-      LI = quantiles[1, ],
-      median = quantiles[2, ],
-      UI = quantiles[3, ]
-    )
+          data.frame(
+            mean = meanCoalTimes,
+            LI = quantiles[1, ],
+            median = quantiles[2, ],
+            UI = quantiles[3, ]
+          )
+     
   return(result)
 }
 ################################################################################################################
@@ -891,8 +1154,9 @@ simulateB_K.parallel = function(DeltaList,
   require(doMC)
   
   RNGkind("L'Ecuyer-CMRG")
-  set.seed(7596034) #set seed to something
-  s <- .Random.seed
+  a=as.numeric(Sys.time())
+  set.seed(floor(runif(1)*a)) #set seed to something
+
   ncores = parallel::detectCores() - 1
   innerCluster <-
     parallel::makeCluster(ncores, type = "FORK", outfile = "")
@@ -900,7 +1164,7 @@ simulateB_K.parallel = function(DeltaList,
   doParallel::registerDoParallel(innerCluster)
   
   
-  rng <- RNGseq(length(DeltaList) * sim, 53727)
+  rng <- RNGseq(length(DeltaList) * sim, floor(runif(1)*a))
   opts <- list(chunkSize = 2)
   
   tmp3 <- foreach::foreach(j = 1:sim, .combine = 'c') %:%
@@ -977,6 +1241,95 @@ simulateB_K.parallel = function(DeltaList,
   return(list.Data.FramesB)
 }
 ################################################################################################################
+#' simulateB_MAster
+#' simulate coalescent times for model M* for a combination of Gamma and Delta
+#' @param i: the  position of Delta in the list of Delta values
+#' @param Delta: the  paratemer Delta
+#' @param Gamma: the  paratemer Gamma
+#' @param sim: the  number of simulations sim
+#' @param sample.size: the  sample size at time t=0
+#' @param Time.Origin.STD: the  time of origin
+#' @param coal.events.times.simB: a big matrix bigstatsr::FBM(length(DeltaList),sim*(sample.size-1))
+#' of size to store the simulated coalescent times
+#' @return: a  data frame(sample.size -1 columns ) with the stats for the coalescent times
+#' for model M_K(one data frame per each Delta value)
+################################################################################################################
+simulateB_MAster = function(i,      Delta,
+                                     Gamma,
+                                     sim,
+                                     sample.size,
+                                     Time.Origin.STD,
+                                     coal.events.times.simB)
+{
+ 
+  
+  RNGkind("L'Ecuyer-CMRG")
+   a=as.numeric(Sys.time())
+  set.seed(floor(runif(1)*a))
+
+
+  
+  lapply(1:sim, FUN=function(j, Delta,
+                                     Gamma, sample.size,
+                                     sim, Time.Origin.STD, coal.events.times.simB, i
+
+    ){
+          TimeOrigin = Time.Origin.STD[i, j]
+                       
+          coal.events.times = modelCoalB_MAster(sample.size, TimeOrigin, Delta, Gamma)
+                       
+                print(
+                   paste(
+                           "finished B M Aster  for Delta",
+                           Delta,
+                           "Gamma",
+                           Gamma,
+                           " sim ",
+                           j,
+                           sep = " "
+                         )
+                       )
+
+
+            positions <-
+                         cbind(rep(i, (sample.size - 1)), ((j - 1) * (sample.size - 1) + 1):(j *
+                                                                                               (sample.size - 1)))
+                       #print(positions)
+            coal.events.times.simB[positions] <- rev(coal.events.times)
+          
+
+  },  Delta,
+      Gamma, sample.size,
+  sim, Time.Origin.STD, coal.events.times.simB, i)
+  
+  
+
+  quants <- c(0.025, 0.50, 0.975)
+  matrixCurrentValue <-
+          matrix(
+            coal.events.times.simB[i, ],
+            nrow = sim ,
+            ncol = sample.size - 1,
+            byrow = TRUE
+          )
+  quantiles <-
+          apply(matrixCurrentValue , 2 , quantile , probs = quants)
+  
+  meanCoalTimes <-
+          colMeans(matrixCurrentValue)
+  
+  result <-
+          data.frame(
+            mean = meanCoalTimes,
+            LI = quantiles[1, ],
+            median = quantiles[2, ],
+            UI = quantiles[3, ]
+          )
+       
+  
+  return(result)
+}
+################################################################################################################
 #' simulateB_MAster.parallel
 #' simulate coalescent times for model M* in parallel
 #' @param DeltaList: the  paratemer Delta
@@ -1008,8 +1361,9 @@ simulateB_MAster.parallel = function(DeltaList,
   require(doMC)
   
   RNGkind("L'Ecuyer-CMRG")
-  set.seed(7596034) #set seed to something
-  s <- .Random.seed
+   a=as.numeric(Sys.time())
+  set.seed(floor(runif(1)*a))
+
   ncores = parallel::detectCores() - 1
   innerCluster <-
     parallel::makeCluster(ncores, type = "FORK", outfile = "")
@@ -1017,7 +1371,7 @@ simulateB_MAster.parallel = function(DeltaList,
   doParallel::registerDoParallel(innerCluster)
   
   
-  rng <- RNGseq(length(DeltaList) * sim, 53727)
+  rng <- RNGseq(length(DeltaList) * sim, floor(runif(1)*a))
   opts <- list(chunkSize = 2)
   
   tmp3 <- foreach::foreach(j = 1:sim, .combine = 'c') %:%
@@ -1160,14 +1514,14 @@ simulateC.parallel = function(DeltaList,
   require(NLRoot)
   require(cmna)
   RNGkind("L'Ecuyer-CMRG")
-  set.seed(69012365) #set seed to something
-  s <- .Random.seed
+  a=as.numeric(Sys.time())
+  set.seed(floor(runif(1)*a))
   ncores = parallel::detectCores() - 1
   innerCluster <-
     parallel::makeCluster(ncores, type = "FORK", outfile = "")
   on.exit(parallel::stopCluster(innerCluster), add = TRUE)
   doParallel::registerDoParallel(innerCluster)
-  rng <- RNGseq(length(DeltaList) * sim, 1234)
+  rng <- RNGseq(length(DeltaList) * sim, floor(runif(1)*a))
   
   
   opts <- list(chunkSize = 2)
@@ -1245,76 +1599,116 @@ simulateC.parallel = function(DeltaList,
 #' @param sim: the  number of simulations sim
 #' @param sample.size: the  sample size at time t=0
 #' @param Time.Origin.STD: the  time of origin
-#' @param indexA: index of the Delta and gGamma value in the GammaList and Deltalist
+#' @param i: index of the Delta and Gamma value in the GammaList and Deltalist
 #' @param coal.events.times.simA: a big matrix bigstatsr::FBM(length(DeltaList),sim*(sample.size-1))
 #' of size to store the simulated coalescent times
+#' @param number.ancestors.simA: a big matrix bigstatsr::FBM(length(DeltaList),sim*(sample.size-1))
+#' of size to store the simulated number of ancestors in the population
+#' @param number.ancestors.Transition: a big matrix bigstatsr::FBM(length(DeltaList),sim)
+#' of size to store the simulated number of ancestors in the population when sample size is floor(0.5*sample.size)
 #' @return: a list of data frame(sample.size -1 columns ) with the stats for the coalescent times
 #' for model M_K(one data frame per each Delta value)
+#' @return: a  data frame(sample.size -1 columns ) with the stats for the coalescent times
 ################################################################################################################
 simulateA = function(Delta,
                      Gamma,
                      sim,
                      sample.size,
                      Time.Origin.STD,
-                     indexA,
-                     coal.events.times.simA)
+                     i,
+                     coal.events.times.simA,
+                     number.ancestors.simA,
+                     number.ancestors.Transition)
 {
-  list.number.ancestors.population.sim <<-
-    array(0, dim = c(sim, sample.size))
   
-  Time.Origin.STD.sim <- array(0, dim = c(sim))
+   RNGkind("L'Ecuyer-CMRG")
+   a=as.numeric(Sys.time())
+   set.seed(floor(runif(1)*a))
+
+
+  lapply(1:sim, FUN=function(j, Delta,
+                     Gamma,
+                     sim,
+                     sample.size,
+                     Time.Origin.STD,
+                     coal.events.times.simA,
+                     number.ancestors.simA,  number.ancestors.Transition, i )
+                 {
+               
+                
+                       list.number.ancestors.population = simulate.list.number.ancestors.population(sample.size)
+                       
+                       
+                       list.coal.times = simulate.coalescent.times.A(Gamma,
+                                                                     Delta,
+                                                                     sample.size,
+                                                                     list.number.ancestors.population)
+                       
+                       coal.events.times = unlist(list.coal.times)
+                       
+                       Time.Origin = coal.events.times[length(coal.events.times)]
+                       
+                       Time.Origin.STD[i, j] <- Time.Origin
+                       
+                       positions <-
+                         cbind(rep(i, (sample.size - 1)), ((j - 1) * (sample.size - 1) + 1):(j *
+                                                                                               (sample.size - 1)))
+                       
+                       number.ancestors.simA[positions] <-
+                         list.number.ancestors.population[2:(length(coal.events.times))]
+                       
+                       coal.events.times.simA[positions] <-
+                         coal.events.times[1:(length(coal.events.times) - 1)]
+                       m = list.number.ancestors.population[floor(length(list.number.ancestors.population) /
+                                                                    2)]
+                       number.ancestors.Transition[cbind(i, j)] <- m
+                       
+                       
+                       print(
+                         paste(
+                           "finished A  for Delta",
+                           Delta,
+                           "Gamma",
+                           Gamma,
+                           " sim ",
+                           j,
+                           sep = " "
+                         )
+                       )
+                    
+            }, 
+            Delta,
+            Gamma,
+            sim,
+            sample.size,
+            Time.Origin.STD,
+            coal.events.times.simA,
+            number.ancestors.simA,  number.ancestors.Transition, i )
+
+
   
-  lapply(
-    1:sim,
-    FUN = function(j,
-                   sample.size,
-                   Gamma,
-                   Delta,
-                   coal.events.times.simA,
-                   Time.Origin.STD.sim)
-    {
-      list.number.ancestors.population = simulate.list.number.ancestors.population(sample.size)
-      
-      list.number.ancestors.population.sim[j, ] <<-
-        list.number.ancestors.population
-      list.coal.times = simulate.coalescent.times.A(Gamma,
-                                                    Delta,
-                                                    sample.size,
-                                                    list.number.ancestors.population)
-      
-      coal.events.times = unlist(list.coal.times)
-      
-      Time.Origin = coal.events.times[length(coal.events.times)]
-      
-      Time.Origin.STD.sim[j] <<- Time.Origin
-      
-      coal.events.times.simA[j, ] <<-
-        coal.events.times[1:(length(coal.events.times) - 1)]
-      print(paste0("finished A sim ", j, "for Delta=", Delta, "Gamma=", Gamma, sep =
-                     " "))
-      
-    },
-    sample.size,
-    Gamma,
-    Delta,
-    coal.events.times.simA,
-    Time.Origin.STD.sim = Time.Origin.STD.sim
-  )
-  
-  Time.Origin.STD[cbind(rep(indexA, sim), 1:sim)] <-
-    Time.Origin.STD.sim
   quants <- c(0.025, 0.50, 0.975)
-  #quantiles<-apply( coal.events.times.simA , 2 , quantile , probs = quants , na.rm = TRUE )
+  matrixCurrentValue <-
+          matrix(
+            coal.events.times.simB[i, ],
+            nrow = sim ,
+            ncol = sample.size - 1,
+            byrow = TRUE
+          )
   quantiles <-
-    apply(coal.events.times.simA , 2 , quantile , probs = quants)
-  meanCoalTimes <- colMeans(coal.events.times.simA)
+          apply(matrixCurrentValue , 2 , quantile , probs = quants)
+  
+  meanCoalTimes <-
+          colMeans(matrixCurrentValue)
+  
   result <-
-    data.frame(
-      mean = meanCoalTimes,
-      LI = quantiles[1, ],
-      median = quantiles[2, ],
-      UI = quantiles[3, ]
-    )
+          data.frame(
+            mean = meanCoalTimes,
+            LI = quantiles[1, ],
+            median = quantiles[2, ],
+            UI = quantiles[3, ]
+          )
+     
   return(result)
 }
 ################################################################################################################
@@ -1355,8 +1749,8 @@ simulateA.parallel = function(DeltaList,
   require(doMC)
   
   RNGkind("L'Ecuyer-CMRG")
-  set.seed(728493) #set seed to something
-  s <- .Random.seed
+   a=as.numeric(Sys.time())
+  set.seed(floor(runif(1)*a))
   ncores = parallel::detectCores() - 1
   innerCluster <-
     parallel::makeCluster(ncores, type = "FORK", outfile = "")
@@ -1364,7 +1758,7 @@ simulateA.parallel = function(DeltaList,
   doParallel::registerDoParallel(innerCluster)
   #rng<- RNGseq( length(DeltaList)* sim, 6452913)
   
-  rng <- RNGseq(length(DeltaList) * sim, 53727)
+  rng <- RNGseq(length(DeltaList) * sim, floor(runif(1)*a))
   
   opts <- list(chunkSize = 2)
   
@@ -1456,6 +1850,186 @@ simulateA.parallel = function(DeltaList,
   
 }
 ################################################################################################################
+#' simulateHybrid
+#' simulate coalescent times for  Hybrid model 
+#' @param i: the  position of Delta in Delta list
+#' @param Delta: the  parameter Delta
+#' @param Gamma: the  parameter Gamma
+#' @param sim: the  number of simulations sim
+#' @param sample.size: the  sample size at time t=0
+#' @param Time.Origin.STD: the  time of origin
+#' @param coal.events.times.simHybrid: a big matrix bigstatsr::FBM(length(DeltaList),sim*(sample.size-1))
+#' of size to store the simulated coalescent times
+#' @param nB: the sample size when the Hybrid model pass from M_k model  to BD model
+#' @param number.Fail.hybrid: a big matrix bigstatsr::FBM(length(mprimeList),length(GammaList)) where mprimeList
+#' is the list of nB values,
+#' to store the number of times we have to resample the number of ancestors in the population m_nB when
+#' sample is nB because m_nB < nB
+#' @param posMprime position of nB in the list of mprimeList
+#' @param K parameter K of the model M_K(applied backwards in time from sample.size  to nB)
+#' @param number.ancestors.simHybrid: a big matrix bigstatsr::FBM(length(DeltaList),sim*(sample.size-1))
+#' of size to store the simulated number of ancestors in the population
+#' @param number.ancestors.Transition : a big matrix bigstatsr::FBM(length(DeltaList),sim)
+#' of size to store the simulated number of ancestors in the population when the Hybrid model pass from M_k model
+#' to BD model
+#' @return: a  data frame(sample.size -1 columns ) with the stats for the coalescent times
+#' for model M_K(one data frame per each Delta value)
+################################################################################################################
+simulateHybrid = function(i, Delta,
+                                   Gamma,
+                                   sim,
+                                   sample.size,
+                                   Time.Origin.STD,
+                                   coal.events.times.simHybrid,
+                                   nB,
+                                   number.Fail.hybrid,
+                                   posMprime,
+                                   K,
+                                   number.ancestors.simHybrid,
+                                   number.ancestors.Transition)
+{
+
+  
+  RNGkind("L'Ecuyer-CMRG")
+   a=as.numeric(Sys.time())
+  set.seed(floor(runif(1)*a))
+ 
+  
+  
+  tmp3 <- lapply(1:sim, FUN=function(j, sample.size,
+    Time.Origin.STD,
+    Delta,
+    Gamma,
+    coal.events.times.simHybrid,
+    nB,
+    number.Fail.hybrid,
+    posMprime,
+    K,
+    number.ancestors.simHybrid,
+    number.ancestors.Transition,
+    i
+    ){
+
+                     TimeOrigin <- Time.Origin.STD[i, j]
+                       
+                       m = -1
+                       while (m < nB) {
+                         if (m != -1) {
+                           number.Fail.hybrid[cbind(posMprime, i)] = number.Fail.hybrid[cbind(posMprime, i)] +
+                             1
+                         }
+                         
+                         std.coal.events.times.until.B = rev(modelCoalHybrid(sample.size, TimeOrigin, Delta, Gamma, nB))
+                         
+                         coal.events.times.until.nB = unlist(lapply(
+                           std.coal.events.times.until.B,
+                           FUN = function(x)
+                             standard2modelB_K(x, TimeOrigin, Delta, Gamma, K)
+                         ))
+                         
+                         t = std.coal.events.times.until.B[length(std.coal.events.times.until.B)]
+                         
+                         m = ceiling(2.0 / t)
+                         
+                         
+                       }
+                       number.ancestors.Transition[cbind(i, j)] <- m
+                       
+                       
+                       list.number.ancestors.population = simulate.list.number.ancestors.population.from(sample.size, m, nB)
+                       
+                       s <-
+                         standard2modelB_K(t, TimeOrigin, Delta, Gamma, K)
+                       
+                       
+                       list.coal.times = simulate.coalescent.times.A.from(Gamma,
+                                                                          Delta,
+                                                                          sample.size,
+                                                                          list.number.ancestors.population,
+                                                                          nB,
+                                                                          s)
+                       
+                       coal.events.times = c(unlist(coal.events.times.until.nB),
+                                             unlist(list.coal.times))
+                       
+                    
+
+                      positions <-
+                         cbind(rep(i, (sample.size - 1)), ((j - 1) * (sample.size - 1) + 1):(j *
+                                                                                               (sample.size - 1)))
+                       
+                       coal.events.times.simHybrid[positions] <-
+                         unlist(coal.events.times)
+                       
+                       number.ancestors.simHybrid[positions] <-
+                         c(rep(0, sample.size - nB - 2),
+                           unlist(list.number.ancestors.population),
+                           0)
+                       
+                       
+                       print(
+                         paste(
+                           "finished hybrid scenario for Delta",
+                           Delta,
+                           "Gamma",
+                           Gamma,
+                           " k0 ",
+                           nB,
+                           " sim ",
+                           j,
+
+                           sep = " "
+                         )
+                       )
+                       NULL
+
+
+
+
+  },
+  sample.size,
+    Time.Origin.STD,
+    Delta,
+    Gamma,
+    coal.events.times.simHybrid,
+    nB,
+    number.Fail.hybrid,
+    posMprime,
+    K,
+    number.ancestors.simHybrid,
+    number.ancestors.Transition,
+    i)
+    
+
+   
+  
+
+  quants <- c(0.025, 0.50, 0.975)
+  matrixCurrentValue <-
+          matrix(
+            coal.events.times.simB[i, ],
+            nrow = sim ,
+            ncol = sample.size - 1,
+            byrow = TRUE
+          )
+  quantiles <-
+          apply(matrixCurrentValue , 2 , quantile , probs = quants)
+  
+  meanCoalTimes <-
+          colMeans(matrixCurrentValue)
+  
+  result <-
+          data.frame(
+            mean = meanCoalTimes,
+            LI = quantiles[1, ],
+            median = quantiles[2, ],
+            UI = quantiles[3, ]
+          )
+  
+  return(result)
+  
+}
+################################################################################################################
 #' simulateHybrid.parallel
 #' simulate coalescent times for  Hybrid model in parallel
 #' @param DeltaList: the  parameter Delta
@@ -1505,8 +2079,8 @@ simulateHybrid.parallel = function(DeltaList,
   require(doMC)
   
   RNGkind("L'Ecuyer-CMRG")
-  set.seed(69012365) #set seed to something
-  s <- .Random.seed
+   a=as.numeric(Sys.time())
+  set.seed(floor(runif(1)*a))
   ncores = parallel::detectCores() - 1
   innerCluster2 <-
     parallel::makeCluster(ncores, type = "FORK", outfile = "")
@@ -1514,7 +2088,7 @@ simulateHybrid.parallel = function(DeltaList,
   #on.exit(parallel::stopCluster(innerCluster), add = TRUE)
   on.exit(parallel::stopCluster(innerCluster2))
   doParallel::registerDoParallel(innerCluster2)
-  rng <- RNGseq(length(DeltaList) * sim, 234567)
+  rng <- RNGseq(length(DeltaList) * sim, floor(runif(1)*a))
   
   opts <- list(chunkSize = 2)
   
@@ -1710,8 +2284,9 @@ simulateA.test.parallel = function(DeltaList,
   require(doMC)
   
   RNGkind("L'Ecuyer-CMRG")
-  set.seed(69012365) #set seed to something
-  s <- .Random.seed
+   a=as.numeric(Sys.time())
+  set.seed(floor(runif(1)*a))
+ 
   
   clust <-
     parallel::makeCluster(parallel::detectCores() - 1,
@@ -1720,7 +2295,7 @@ simulateA.test.parallel = function(DeltaList,
   
   on.exit(parallel::stopCluster(clust), add = TRUE)
   doParallel::registerDoParallel(clust)
-  rng <- RNGseq(length(DeltaList) * sim, 234567)
+  rng <- RNGseq(length(DeltaList) * sim, floor(runif(1)*a))
   
   opts <- list(chunkSize = 2)
   
@@ -2131,7 +2706,7 @@ get_simulated_kth_coal_times <-
   }
 ################################################################################################################
 #' get_list_simulated_trees
-#' gets a simulate tree with some  set of paramater value
+#' gets a simulate tree with some  set of parameter value
 #' @param coal.events.times.sim is a big matrix bigstatsr::FBM(length(DeltaList),sim*(sample.size-1))
 #' @param parameter_index index of parameter value
 #' @param number.sim.trees: number of simulations
