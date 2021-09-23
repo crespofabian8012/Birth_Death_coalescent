@@ -139,6 +139,68 @@ standard2modelB_K <- function(u, Torigin, Delta, Gamma, K) {
   return(result)
 }
 ################################################################################################################
+#' modelB_K2standard
+#'
+#' from  M_K model time to Kingsman coal time
+#' @param u The time variable u is in M_K model time 
+#' @param Torigin The time of origin
+#' @param Delta The parameter Delta
+#' @param Gamma The parameter Gamma
+#' @param K The parameter K of the model M_K
+#' @return return the Kingsman coal time  equivalent to M_K model time u
+################################################################################################################
+modelB_K2standard <- function(u, Torigin, Delta, Gamma, K) {
+  minus.exp.Delta.Torigin = exp(-Delta * Torigin)
+  a = (K / Gamma) * (1 - minus.exp.Delta.Torigin) - minus.exp.Delta.Torigin
+  b = 1 - (K / Gamma) * (1 - minus.exp.Delta.Torigin)
+
+  y = (a*exp(Delta*u) + b) / (1-minus.exp.Delta.Torigin *exp(Delta*u))
+
+  result = (2.0 / K) * log(y)
+  return(result)
+}
+#check standard2modelB_K(modelB_K2standard(0.025, 0.039, 100, 100, 0.8), 0.039, 100, 100, 0.8) == 0.025
+################################################################################################################
+#' modelB2standard
+#'
+#' from  M_0 model time to Kingsman coal time
+#' @param u The time variable u is in M_0 model time 
+#' @param Torigin The time of origin
+#' @param Delta The parameter Delta
+#' @param Gamma The parameter Gamma
+#' @return return the Kingsman coal time  equivalent to M_0 model time u
+################################################################################################################
+modelB02standard <- function(u, Torigin, Delta, Gamma) {
+ 
+  a = exp(Delta*u) -1.0
+  b = 1 - exp(-1.0*Delta*Torigin)
+  c = 1-  exp(-1.0*Delta*(Torigin -u))
+  y = (a* b) / (Gamma *c)
+  
+  result = y
+  return(result)
+}
+#check standard2modelB0(modelB02standard(0.025, 0.039, 100, 100), 0.039, 100, 100) == 0.025
+################################################################################################################
+#' standard2modelB0
+#'
+#' from    Kingsman coal time to M_0 model time
+#' @param u The time variable u is in Kingsman coal  time 
+#' @param Torigin The time of origin
+#' @param Delta The parameter Delta
+#' @param Gamma The parameter Gamma
+#' @return return the  M_0 model time u
+################################################################################################################
+standard2modelB0 <- function(u, Torigin, Delta, Gamma) {
+  
+  a = exp(-1.0 * Delta * Torigin)
+  y = log(1 + Delta * u - a) - log(1 + (Delta * u - 1) * a);
+  
+  result = (1.0/Gamma)*y
+  return(result)
+}
+#check standard2modelB0(modelB02standard(0.025, 0.039, 100, 100), 0.039, 100, 100) == 0.025
+################################################################################################################
 #' standard2modelB
 #'
 #' Kingsman coalescent  time to time in model  M_K
@@ -220,6 +282,105 @@ modelCoal <- function(n, Torigin, Delta, Gamma) {
   return(u)
 }
 ################################################################################################################
+#' modelCoal_race
+#'
+#' Coalescent  times from sample size n to sample size 1 for model M_0
+#' @param n The sample size at time 0(present time)
+#' @param Torigin The time of origin
+#' @param Delta The parameter Delta
+#' @param Gamma The parameter Gamma
+#' @return return the list of coalescent times in model M_0
+################################################################################################################
+modelCoal_race <- function(n, Torigin, Delta, Gamma) {
+  #example modelCoal_race(5, 0.039, 100, 100)
+  
+  Kingman.coal.times<- unlist(lapply(1:choose(n, 2), function(i)
+    rexp(1, rate =1)))
+  idx<- 1:n
+  pairs<-combn(idx, 2, paste, collapse=",")
+  
+  coal.model.times <- unlist(lapply(
+    Kingman.coal.times,
+    FUN = function(x)
+      standard2modelB0(x, Torigin, Delta, Gamma)
+  ))
+  idx.next = n+1
+  active.ind<- unlist(lapply(1:n, FUN=function(x)  toString(x)))
+  result= list()
+  pos =1
+  curr.model.time = 0
+  curr.Kingman.model.time  = 0
+  iteration = 1
+  while(iteration < n)
+  {
+    numpairs = choose(n-iteration+1, 2)
+    stopifnot(length(active.ind)==(n-iteration+1))
+    stopifnot(length(coal.model.times)==numpairs)
+    stopifnot(length(pairs)==numpairs)
+    
+    winner <- min(coal.model.times)
+    pos.winner <-which(coal.model.times == winner)[1]
+    winner.pair <-pairs[pos.winner]
+    subSplits=  unlist(strsplit(winner.pair, ","))
+    
+    left = subSplits[1]
+    right = subSplits[2]
+    active.ind<-active.ind[-which(active.ind==left)]
+    active.ind<-active.ind[-which(active.ind==right)]
+    pairs<- pairs[-pos.winner]; 
+    result[[pos]] <- coal.model.times[pos.winner]
+    pos = pos +1
+    
+    
+    curr.model.time = coal.model.times[pos.winner]
+    curr.Kingman.model.time = modelB02standard(curr.model.time, Torigin, Delta, Gamma)
+    
+    coal.model.times <- coal.model.times[-pos.winner]
+    
+    dropout.idxs<-unlist(lapply( pairs, FUN = function(x, left, right){
+      list.left.right = unlist(strsplit(x, ","))
+      #grepl( left, x, fixed = TRUE)|| grepl( right, x, fixed = TRUE)
+      (left %in% list.left.right) || (right %in% list.left.right)
+    },left, right))
+    
+    
+    stopifnot(length(pairs)==length(dropout.idxs))
+    if (length(pairs)==0){
+      
+      break
+    }
+    pairs = pairs[!dropout.idxs]
+    coal.model.times <- coal.model.times[!dropout.idxs]
+    str.new.ind = toString(idx.next)
+    new.pairs = unlist(lapply(active.ind, FUN= function(x, str.new.ind) paste(x, str.new.ind, sep=","), str.new.ind ))
+    active.ind= append(active.ind, toString(idx.next))
+    pairs = append(pairs, new.pairs)
+    new.Kingman.model.times<-curr.Kingman.model.time+unlist(lapply(1:length(new.pairs), function(i)
+      rexp(1, rate =1)))
+    new.coal.model.times<- unlist(lapply(
+      new.Kingman.model.times,
+      FUN = function(x)
+        standard2modelB0(x, Torigin, Delta, Gamma)
+    ))
+    coal.model.times<-append(coal.model.times, new.coal.model.times)
+    idx.next= idx.next+1 
+    iteration = iteration +1  
+  }
+  result1 = unlist(result)
+  if (length(result1)!=(n-1)){
+    
+    print(paste("length ",length(result1)))
+    print(paste("result ",result1))
+    print(paste("Delta ",Delta))
+    print(paste("Gamma ",Gamma))
+    print(paste("Torigin ",Torigin))
+    print(paste("n ",n))
+    print(paste("K ",K))
+  }
+  stopifnot(length(result1)==(n-1))
+  return(result1)
+}
+################################################################################################################
 #' modelCoalB_K
 #'
 #' Coalescent  times from sample size n to sample size 1
@@ -243,6 +404,107 @@ modelCoalB_K <- function(n, Torigin, Delta, Gamma, K) {
         standard2modelB_K(x, Torigin, Delta, Gamma, K)
     ))
   return(u)
+}
+################################################################################################################
+#' modelCoalB_K_race
+#'
+#' Coalescent  times from sample size n to sample size 1
+#' @param n The sample size at time 0(present time)
+#' @param Torigin The time of origin
+#' @param Delta The parameter Delta
+#' @param Gamma The parameter Gamma
+#' @param K The parameter K of the model M_K
+#' @return return the list of coalescent times in model M_K
+################################################################################################################
+modelCoalB_K_race <- function(n, Torigin, Delta, Gamma, K) {
+  #example modelCoalB_K_race(5, 0.039, 100, 100, 0.8)
+  # modelCoalB_K_race(10, 0.2882, 10, 10, 0.8) 
+  
+  Kingman.coal.times<- unlist(lapply(1:choose(n, 2), function(i)
+    rexp(1, rate =1)))
+  idx<- 1:n
+  pairs<-combn(idx, 2, paste, collapse=",")
+       
+  coal.model.times <- unlist(lapply(
+    Kingman.coal.times,
+    FUN = function(x)
+      standard2modelB_K(x, Torigin, Delta, Gamma, K)
+  ))
+  idx.next = n+1
+  active.ind<- unlist(lapply(1:n, FUN=function(x)  toString(x)))
+  result= list()
+  pos =1
+  curr.model.time = 0
+  curr.Kingman.model.time  = 0
+  iteration = 1
+  while(iteration < n)
+    {
+      numpairs = choose(n-iteration+1, 2)
+      stopifnot(length(active.ind)==(n-iteration+1))
+      stopifnot(length(coal.model.times)==numpairs)
+      stopifnot(length(pairs)==numpairs)
+      
+      winner <- min(coal.model.times)
+      pos.winner <-which(coal.model.times == winner)[1]
+      winner.pair <-pairs[pos.winner]
+      subSplits=  unlist(strsplit(winner.pair, ","))
+      
+      left = subSplits[1]
+      right = subSplits[2]
+      active.ind<-active.ind[-which(active.ind==left)]
+      active.ind<-active.ind[-which(active.ind==right)]
+      pairs<- pairs[-pos.winner]; 
+      result[[pos]] <- coal.model.times[pos.winner]
+      pos = pos +1
+    
+         
+      curr.model.time = coal.model.times[pos.winner]
+      curr.Kingman.model.time = modelB_K2standard(curr.model.time, Torigin, Delta, Gamma, K)
+      
+      coal.model.times <- coal.model.times[-pos.winner]
+
+      dropout.idxs<-unlist(lapply( pairs, FUN = function(x, left, right){
+        list.left.right = unlist(strsplit(x, ","))
+        #grepl( left, x, fixed = TRUE)|| grepl( right, x, fixed = TRUE)
+        (left %in% list.left.right) || (right %in% list.left.right)
+      },left, right))
+      
+      
+      stopifnot(length(pairs)==length(dropout.idxs))
+      if (length(pairs)==0){
+        
+        break
+      }
+      pairs = pairs[!dropout.idxs]
+      coal.model.times <- coal.model.times[!dropout.idxs]
+      str.new.ind = toString(idx.next)
+      new.pairs = unlist(lapply(active.ind, FUN= function(x, str.new.ind) paste(x, str.new.ind, sep=","), str.new.ind ))
+      active.ind= append(active.ind, toString(idx.next))
+      pairs = append(pairs, new.pairs)
+      new.Kingman.model.times<-curr.Kingman.model.time+unlist(lapply(1:length(new.pairs), function(i)
+        rexp(1, rate =1)))
+      new.coal.model.times<- unlist(lapply(
+        new.Kingman.model.times,
+        FUN = function(x)
+          standard2modelB_K(x, Torigin, Delta, Gamma, K)
+      ))
+      coal.model.times<-append(coal.model.times, new.coal.model.times)
+      idx.next= idx.next+1 
+      iteration = iteration +1  
+      }
+  result1 = unlist(result)
+  if (length(result1)!=(n-1)){
+
+     print(paste("length ",length(result1)))
+     print(paste("result ",result1))
+     print(paste("Delta ",Delta))
+     print(paste("Gamma ",Gamma))
+     print(paste("Torigin ",Torigin))
+     print(paste("n ",n))
+     print(paste("K ",K))
+  }
+  stopifnot(length(result1)==(n-1))
+  return(result1)
 }
 ################################################################################################################
 #' modelCoalB_MAster
@@ -1236,6 +1498,126 @@ simulateB_K.parallel = function(DeltaList,
       sample.size,
       sim,
       coal.events.times.simB
+    )
+  
+  return(list.Data.FramesB)
+}
+################################################################################################################
+#' simulateB_K_Race.parallel
+#' simulate coalescent times for model M_K in parallel
+#' @param DeltaList: the  paratemer Delta
+#' @param GammaList: the  paratemer Gamma
+#' @param sim: the  number of simulations sim
+#' @param sample.size: the  sample size at time t=0
+#' @param Time.Origin.STD: the  time of origin
+#' @param coal.events.times.simB: a big matrix bigstatsr::FBM(length(DeltaList),sim*(sample.size-1))
+#' of size to store the simulated coalescent times
+#' @param K: the  parameter K>=0 of model M_K
+#' @return: a list of data frame(sample.size -1 columns ) with the stats for the coalescent times
+#' for model M_K(one data frame per each Delta value)
+################################################################################################################
+simulateB_K_Race.parallel = function(DeltaList,
+                                GammaList,
+                                sim,
+                                sample.size,
+                                Time.Origin.STD,
+                                coal.events.times.simB.race,
+                                K)
+{
+  require(foreach)
+  require(doParallel)
+  require(doSNOW)
+  require(parallel)
+  require(doFuture)
+  require(bigstatsr)
+  require(stats)
+  require(rgenoud)
+  require(doRNG)
+  require(doMC)
+  
+  RNGkind("L'Ecuyer-CMRG")
+  a=as.numeric(Sys.time())
+  set.seed(floor(runif(1)*a)) #set seed to something
+  
+  ncores = parallel::detectCores() - 1
+  innerCluster <-
+    parallel::makeCluster(ncores, type = "FORK", outfile = "")
+  on.exit(parallel::stopCluster(innerCluster), add = TRUE)
+  doParallel::registerDoParallel(innerCluster)
+  
+  
+  rng <- RNGseq(length(DeltaList) * sim, floor(runif(1)*a))
+  opts <- list(chunkSize = 2)
+  
+  tmp3 <- foreach::foreach(j = 1:sim, .combine = 'c') %:%
+    foreach::foreach(i = 1:length(DeltaList),
+                     r = rng[(j - 1) * length(DeltaList) + 1:length(DeltaList)],
+                     .combine = 'c') %dopar% {
+                       rngtools::setRNG(r)
+                       
+                       TimeOrigin = Time.Origin.STD[i, j]
+                       
+                       if (K>0){
+                         
+                         coal.events.times = modelCoalB_K_race(sample.size, TimeOrigin, DeltaList[i], GammaList[i], K)
+                       }
+                       else{#K=0
+                         coal.events.times = modelCoal_race(sample.size, TimeOrigin, DeltaList[i], GammaList[i])
+                       }
+                       
+                       print(
+                         paste(
+                           "finished B M_k as race in parallel for Delta",
+                           DeltaList[i],
+                           "Gamma",
+                           GammaList[i],
+                           "K",
+                           K,
+                           " sim ",
+                           j,
+                           sep = " "
+                         )
+                       )
+                       positions <-
+                         cbind(rep(i, (sample.size - 1)), ((j - 1) * (sample.size - 1) + 1):(j *
+                                                                                               (sample.size - 1)))
+                       coal.events.times.simB.race[positions] <- coal.events.times
+                       NULL
+                     }
+  list.Data.FramesB <-
+    parallel::mclapply(
+      1:length(DeltaList),
+      mc.set.seed = TRUE,
+      mc.cores = parallel::detectCores() - 1,
+      FUN = function(k,
+                     sample.size,
+                     sim,
+                     coal.events.times.simB.race)
+      {
+        quants <- c(0.025, 0.50, 0.975)
+        matrixCurrentValue <-
+          matrix(
+            coal.events.times.simB.race[k, ],
+            nrow = sim ,
+            ncol = sample.size - 1,
+            byrow = TRUE
+          )
+        #quantiles<-apply( matrixCurrentValue , 2 , quantile , probs = quants , na.rm = TRUE )
+        quantiles <-
+          apply(matrixCurrentValue , 2 , quantile , probs = quants)
+        meanCoalTimes <- colMeans(matrixCurrentValue)
+        result <-
+          data.frame(
+            mean = meanCoalTimes,
+            LI = quantiles[1, ],
+            median = quantiles[2, ],
+            UI = quantiles[3, ]
+          )
+        result
+      },
+      sample.size,
+      sim,
+      coal.events.times.simB.race
     )
   
   return(list.Data.FramesB)

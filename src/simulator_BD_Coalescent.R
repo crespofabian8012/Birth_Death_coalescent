@@ -778,7 +778,7 @@ if (!doJustBenchMark) {
   print("Starting simulation benchmark...")
 
    number_runs=100
-   sample.size=1000
+   sample.size=10
    
    sim=1
    GammaList = c( 10)
