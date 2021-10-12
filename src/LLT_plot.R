@@ -3,6 +3,8 @@ rm(list = ls())
 library(tibble)
 library(tidyr)
 library(dplyr)
+library(dplyr)
+library(ape)
 getCurrentFileLocation <-  function()
 {
   require(tibble)
@@ -40,7 +42,7 @@ build_tree_from_coal_times <-
         sample.size <- length(coal.events.times)+1
         
         coalescent_tree = rcoal(sample.size, br = "coalescent")
-        x <- tibble::as_tibble(coalescent_tree)
+        x <- dplyr::as_tibble(coalescent_tree)
         
         df <- as.data.frame(x)
         
@@ -269,6 +271,8 @@ p2<-as.ggplot(~nltt_plot2(list_trees_mean_coal_times[[2]], lwd=2))
 p3<-as.ggplot(~nltt_plot2(list_trees_mean_coal_times[[3]], lwd=2))
 
 p4<-as.ggplot(~nltt_plot2(list_trees_mean_coal_times[[4]], lwd=2))
+
+
 
 ggpubr::ggarrange(p1,p2,p3, p4,
                   labels=c(  "\u0393=0.001", 

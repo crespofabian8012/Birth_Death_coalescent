@@ -601,7 +601,6 @@ server <- function(input, output, session) {
      
     
     output$distPlot <- renderPlot({
-        #print(v$doPlot)
         #if (v$doPlot == FALSE) return()
        
         sim<- input$sim
@@ -699,21 +698,7 @@ server <- function(input, output, session) {
                              type = "S", xlim= c(0,1), ylim=c(0,1), main = "nLTT with average coalescent times in LBD Coalescent") #type = "S" ensures a stepwise function
       graphics::abline(a=0, b=1,  lty=2)
       
-    #   p1<-nltt_plot2(list_trees_mean_coal_times[[1]], lwd=2)
-    #   
-    #   tree<- as.phylo(tree)
-    #   print(tree)
-    #   #p2<-ggplotify::as.ggplot(~nLTT::nltt_plot(tree, lwd=2))
-    #   
-    #   t1<-ggtree(list_trees_mean_coal_times[[1]])
-    #  
-    # #  p1<-ggplotify::as.ggplot(~nltt_plot2(list_trees_mean_coal_times[[1]], lwd=2))
-    #   
-    #   
-    #   ggpubr::ggarrange(t1,p1,
-    #                     labels=c(  "Mean coal times topology", 
-    #                                "NLTT"),
-    #                     ncol = 2, nrow = 1)
+  
     })
     
     output$plotTree<-renderPlot({
