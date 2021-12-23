@@ -32,9 +32,9 @@ simulator_BD_Coalescent.R
 Alternatively you can souce the file /src/simulator_BD_Coalescent.R
 and call the functions on your own.
 
-Theres is a Shiny app: app.R in 
+There is a Shiny app: app.R in 
 https://github.com/crespofabian8012/Birth_Death_coalescent/tree/master/src/LimitBirthDeathCoalescent
-where you can play with the paremeter values.
+where you can play with the parameter values.
 
 ![shiny](https://github.com/crespofabian8012/Birth_Death_coalescent/blob/master/src/LimitBirthDeathCoalescent/shiny_app.png?raw=true)
 
