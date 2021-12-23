@@ -12,7 +12,7 @@ Abstract: A coalescent model of a sample of size n is derived from a birth–dea
 Keywords: Bernoulli sampling; Conditioned reconstructed process; Founder population; Variable population size coalescence; Kingman coalescence
 
 
-The function to simulate from Limit Birt-Death Coalescent and approximations(M_K. M* and Hybrid)
+The function to simulate from Limit Birt-Death Coalescent and approximations(M_K,  M* and Hybrid)
 can be found in the file:
 /src/CoalSimulationBirthDeath.R
 
